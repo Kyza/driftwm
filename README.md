@@ -2,29 +2,32 @@
 
 A trackpad-first infinite canvas Wayland compositor.
 
-Windows float on an unbounded 2D plane. You pan, zoom, and navigate with
+Traditional window managers arrange windows to fit your viewport. driftwm
+flips this: windows float on an infinite 2D canvas and you move the viewport
+around them. Designed with laptops in mind where trackpad support keeps
+getting better and display size is limited. You pan, zoom, and navigate with
 trackpad gestures. No workspaces, no tiling — just drift.
 
-Inspired by [vxwm](https://codeberg.org/wh1tepearl/vxwm). Built on [smithay](https://github.com/Smithay/smithay).
+Inspired by [vxwm](https://codeberg.org/wh1tepearl/vxwm) and [niri](https://github.com/YaLTeR/niri). Built on [smithay](https://github.com/Smithay/smithay).
 
 ## How it works
 
 The screen is a viewport onto an infinite 2D plane. Each window has absolute
 coordinates on this plane. You move around with trackpad gestures:
 
-- **2-finger scroll** on empty desktop — pan the canvas
-- **3-finger scroll** anywhere — pan the canvas (ignores windows)
+- **2-finger scroll** on empty desktop — pan viewport
+- **3-finger scroll** anywhere — pan viewport (ignores windows)
 - **3-finger double-tap+drag** on a window — move that window
-- **2-finger pinch** — zoom in/out (bird's eye view)
+- **2-finger pinch** on empty desktop — zoom
+- **3-finger pinch** anywhere — zoom (ignores windows)
 - **4-finger scroll** — jump to the nearest window in that direction
 - **4/5-finger pinch** — toggle home position
 
-Mouse equivalents use `Super` + click/drag for everything.
+Mouse: scroll wheel zooms, click-drag pans. `Mod` + click/drag works anywhere.
 
-The background is part of the canvas — it scrolls and scales with the viewport,
-giving you spatial grounding as you navigate. Default is a GLSL dot-grid shader;
-you can swap in any custom shader (noise, gradients, animated patterns) or a
-seamless tiled image.
+A static wallpaper gives no feedback when panning an infinite canvas, so
+the background scrolls with the viewport. Any GLSL fragment shader works as
+an infinitely generated background, or you can tile an image of any size.
 
 See [docs/DESIGN.md](docs/DESIGN.md) for the full specification.
 
@@ -58,17 +61,18 @@ The socket name is printed at startup — use that if it differs from `wayland-1
 
 ## Keybinds
 
-| Shortcut               | Action                          |
-|------------------------|---------------------------------|
-| `Alt+Return`           | Open terminal                   |
-| `Alt+Q`                | Close window                    |
-| `Alt+Shift+Left-click` | Drag to move window             |
-| `Alt+Shift+Right-click`| Drag to resize window           |
-| `Alt+Left-click`       | Drag to pan canvas              |
-| `Alt+Shift+Arrow`      | Nudge focused window by 20px    |
-| `Alt+Ctrl+Arrow`       | Pan viewport by step            |
-| Scroll on empty canvas | Pan viewport (with momentum)    |
-| Click on empty canvas  | Drag to pan viewport            |
+| Shortcut                | Action                              |
+| ----------------------- | ----------------------------------- |
+| `Mod+Return`            | Open terminal                       |
+| `Mod+Q`                 | Close window                        |
+| `Mod+C`                 | Center focused window               |
+| `Mod+Arrow`             | Jump to nearest window in direction |
+| `Mod+A`                 | Toggle home (0,0) ↔ previous        |
+| `Mod+Shift+Left-click`  | Drag to move window                 |
+| `Mod+Shift+Right-click` | Drag to resize window               |
+| `Mod+Left-click`        | Drag to pan viewport                |
+| `Mod+Shift+Arrow`       | Nudge focused window by 20px        |
+| `Mod+Ctrl+Arrow`        | Pan viewport by step                |
 
 CSD-initiated move/resize (title bar drag, border drag) also works.
 
@@ -101,10 +105,10 @@ src/
 
 ## Milestones
 
-1. **Window appears** — winit backend, xdg-shell, terminal renders *(done)*
-2. **Move and resize** — drag/resize windows, CSD support *(done)*
-3. **Infinite canvas** — viewport panning, scroll momentum, xcursor rendering *(done)*
-4. **Canvas background** — GLSL shaders, tiled images, edge auto-pan *(done)*
+1. **Window appears** — winit backend, xdg-shell, terminal renders _(done)_
+2. **Move and resize** — drag/resize windows, CSD support _(done)_
+3. **Infinite canvas** — viewport panning, scroll momentum, xcursor rendering _(done)_
+4. **Canvas background** — GLSL shaders, tiled images, edge auto-pan _(done)_
 5. Window navigation — Super+C center, Super+Arrow jump, Alt-Tab cycle
 6. Zoom — GPU-scaled rendering, pinch to zoom
 7. Decorations — SSD fallback, resize grab zones

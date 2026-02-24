@@ -97,11 +97,12 @@ if the surface under the cursor changes mid-gesture).
 | ------- | --------- | --------- | ------------------------------ |
 | 2       | scroll    | on window | Pass through to app            |
 | 2       | scroll    | desktop   | Pan viewport                   |
+| 2       | pinch     | on window | Pass through to app            |
 | 2       | pinch     | desktop   | Zoom in/out                    |
 | 3       | scroll    | anywhere  | Pan viewport (ignores windows) |
 | 3       | dbl-tap+drag | on window | Move window (see below)     |
 | 3+Super | drag      | on window | Resize window                  |
-| 3       | pinch     | on window | Toggle fullscreen              |
+| 3       | pinch     | anywhere  | Zoom in/out (ignores windows)  |
 | 4       | scroll    | desktop   | Center nearest window in direction |
 | 4/5     | pinch     | anywhere  | Toggle home (0,0) ↔ previous   |
 
@@ -110,6 +111,10 @@ drag on the second tap (like double-middle-click-drag with a mouse). Immediate
 3-finger scroll always pans the viewport — the double-tap disambiguates "pan
 viewport" from "move window." No visual feedback needed since intent is
 unambiguous from the double-tap.
+
+**3-finger+Super resize**: The only trackpad gesture that requires a keyboard
+modifier. Needed for trackpads without right-click drag support. Edges
+inferred from pointer position in the window (same quadrant logic as mouse).
 
 **4-finger center**: Searches from cursor in the scroll direction for the
 nearest window (using a viewport-width search band). Centers it, focuses,
@@ -124,11 +129,17 @@ Pinch-out (or second pinch-in) restores. Peek at home widgets and jump back.
 | -------------- | ---------------------------------- |
 | Pan viewport   | Click-drag on empty canvas         |
 | Pan viewport   | `Super` + left-drag (anywhere)     |
+| Zoom           | Scroll wheel on empty canvas       |
+| Zoom           | `Super` + scroll wheel (anywhere)  |
 | Move window    | `Super+Shift` + left-drag          |
 | Resize window  | `Super+Shift` + right-drag         |
-| Zoom           | `Super` + scroll wheel             |
 | Center window  | `Super+Ctrl` + left-drag           |
 | Toggle home    | `Super` + middle-click             |
+
+**Trackpad vs mouse wheel**: both produce axis events but serve different
+purposes. The compositor uses `axis_source` to split them — trackpad scroll
+(`Finger`) pans the viewport, mouse wheel (`Wheel`) zooms. This means
+scroll-on-canvas does the right thing for each device without extra modifiers.
 
 ### Edge auto-pan
 
@@ -157,7 +168,7 @@ Minimal set. Defaults below, all configurable via `[keybinds]` table (maps key c
 | Shortcut      | Action                             |
 | ------------- | ---------------------------------- |
 | `Super+Arrow` | Center nearest window in direction |
-| `Super+Home`  | Toggle home (0, 0) ↔ previous pos  |
+| `Super+A`     | Toggle home (0, 0) ↔ previous pos  |
 | `Super+W`     | Zoom-to-fit — show all windows     |
 
 ### Viewport
