@@ -125,8 +125,15 @@ pub fn init_winit(
         data.state.background_tile = Some((buffer, w as i32, h as i32));
     }
 
-    // Map the output into the space at (0, 0)
-    data.state.space.map_output(&output, (0, 0));
+    // Centre the viewport so canvas origin (0, 0) is in the middle of the screen
+    let logical_size = size.to_logical(1);
+    data.state.camera = Point::from((
+        -(logical_size.w as f64) / 2.0,
+        -(logical_size.h as f64) / 2.0,
+    ));
+
+    // Map the output into the space at the initial camera position
+    data.state.space.map_output(&output, data.state.camera.to_i32_round());
 
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
 

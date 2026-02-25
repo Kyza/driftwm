@@ -79,8 +79,8 @@ void main() {
 - **Colors as constants**: Define colors, spacing, and other tunables as
   GLSL `const` values at the top of your shader. This keeps everything in
   one file — no config round-trip needed.
-- **Shipped examples**: See `assets/shaders/` for dot grid, noise clouds,
-  and dark sea patterns.
+- **Shipped examples**: See `assets/shaders/` for dot grid, compass grid,
+  noise clouds, and dark sea patterns.
 
 ## Using a custom shader
 
