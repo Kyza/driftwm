@@ -34,7 +34,7 @@ See [docs/DESIGN.md](docs/DESIGN.md) for the full specification.
 
 ## Status
 
-Early development. Current milestone: **7 — Decorations**.
+Early development. Current milestone: **7 — Layer Shell**.
 
 The compositor runs nested via winit backend, renders xdg-shell clients on an
 infinite 2D canvas with viewport panning (scroll, click-drag, keyboard), scroll
@@ -124,12 +124,12 @@ src/
 4. **Canvas background** — GLSL shaders, tiled images, edge auto-pan _(done)_
 5. **Window navigation** — center, directional jump, Alt-Tab cycle, home toggle _(done)_
 6. **Zoom** — GPU-scaled rendering, cursor-anchored zoom, dynamic min-zoom _(done)_
-7. Decorations — SSD fallback, resize grab zones
-8. Layer shell — waybar, fuzzel, notifications
-9. Config file — TOML parsing, user keybindings
-10. udev backend — DRM/KMS, libinput, session management
-11. Trackpad gestures — 3-finger pan/double-tap-drag, gesture state machine
-12. Multi-monitor — multiple viewports on same canvas
+7. Layer shell — waybar, fuzzel, notifications
+8. Config file — TOML parsing, user keybindings
+9. udev backend — DRM/KMS, libinput, session management
+10. Trackpad gestures — 3-finger pan/double-tap-drag, gesture state machine
+11. Multi-monitor — multiple viewports on same canvas
+12. Decorations — SSD fallback, resize grab zones
 13. XWayland — X11 app support
 14. Widgets + polish — eww preset, animations, shadows, damage optimization
 

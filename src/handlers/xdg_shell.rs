@@ -11,7 +11,7 @@ use smithay::{
     input::pointer::{CursorIcon, CursorImageStatus, Focus, GrabStartData},
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
-        wayland_server::{Resource, protocol::wl_seat},
+        wayland_server::{Resource, protocol::{wl_output, wl_seat}},
     },
     utils::Serial,
     wayland::{
@@ -119,6 +119,31 @@ impl XdgShellHandler for DriftWm {
         surface.send_configure().ok();
     }
 
+    fn fullscreen_request(
+        &mut self,
+        surface: ToplevelSurface,
+        _output: Option<wl_output::WlOutput>,
+    ) {
+        let wl_surface = surface.wl_surface().clone();
+        let window = self
+            .space
+            .elements()
+            .find(|w| w.toplevel().unwrap().wl_surface() == &wl_surface)
+            .cloned();
+        if let Some(window) = window {
+            self.enter_fullscreen(&window);
+        }
+    }
+
+    fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        let is_fullscreen = self.fullscreen.as_ref().is_some_and(|fs| {
+            fs.window.toplevel().unwrap().wl_surface() == surface.wl_surface()
+        });
+        if is_fullscreen {
+            self.exit_fullscreen();
+        }
+    }
+
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
         let wl_surface = surface.wl_surface().clone();
         self.pending_center.remove(&wl_surface);
@@ -129,6 +154,13 @@ impl XdgShellHandler for DriftWm {
             .find(|w| w.toplevel().unwrap().wl_surface() == &wl_surface)
             .cloned();
         if let Some(ref window) = window {
+            // If the destroyed window was fullscreen, restore viewport
+            if self.fullscreen.as_ref().is_some_and(|fs| &fs.window == window) {
+                let fs = self.fullscreen.take().unwrap();
+                self.camera = fs.saved_camera;
+                self.zoom = fs.saved_zoom;
+                self.update_output_from_camera();
+            }
             // Remove from focus history before unmapping
             self.focus_history.retain(|w| w != window);
             // Clamp or clear cycle index if cycling is active

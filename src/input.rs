@@ -94,6 +94,11 @@ impl DriftWm {
     }
 
     pub fn execute_action(&mut self, action: &Action) {
+        // Any action except ToggleFullscreen exits fullscreen first
+        if self.fullscreen.is_some() && !matches!(action, Action::ToggleFullscreen) {
+            self.exit_fullscreen();
+        }
+
         self.momentum.stop();
         match action {
             Action::SpawnCommand(cmd) => {
@@ -320,6 +325,23 @@ impl DriftWm {
                     }
                 }
             }
+            Action::ToggleFullscreen => {
+                if self.fullscreen.is_some() {
+                    self.exit_fullscreen();
+                } else {
+                    let keyboard = self.seat.get_keyboard().unwrap();
+                    if let Some(focus) = keyboard.current_focus() {
+                        let window = self
+                            .space
+                            .elements()
+                            .find(|w| w.toplevel().unwrap().wl_surface() == &focus.0)
+                            .cloned();
+                        if let Some(window) = window {
+                            self.enter_fullscreen(&window);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -384,7 +406,7 @@ impl DriftWm {
         let button_state = event.state();
         let pointer = self.seat.get_pointer().unwrap();
 
-        if button_state == ButtonState::Pressed {
+        if button_state == ButtonState::Pressed && self.fullscreen.is_none() {
             self.last_scroll_pan = None;
             self.momentum.stop();
             let pos = pointer.current_location();
@@ -539,6 +561,26 @@ impl DriftWm {
     }
 
     fn on_pointer_axis<I: InputBackend>(&mut self, event: I::PointerAxisEvent) {
+        // During fullscreen, forward all scroll to the app (no pan/zoom)
+        if self.fullscreen.is_some() {
+            let pointer = self.seat.get_pointer().unwrap();
+            let mut frame = AxisFrame::new(Event::time_msec(&event))
+                .source(event.source());
+            for axis in [Axis::Horizontal, Axis::Vertical] {
+                if let Some(amount) = event.amount(axis) {
+                    frame = frame
+                        .value(axis, amount)
+                        .relative_direction(axis, event.relative_direction(axis));
+                }
+                if let Some(v120) = event.amount_v120(axis) {
+                    frame = frame.v120(axis, v120 as i32);
+                }
+            }
+            pointer.axis(self, frame);
+            pointer.frame(self);
+            return;
+        }
+
         let keyboard = self.seat.get_keyboard().unwrap();
         let mods = keyboard.modifier_state();
         let wm_mod = self.config.mod_key.is_pressed(&mods);

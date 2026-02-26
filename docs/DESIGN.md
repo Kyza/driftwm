@@ -36,9 +36,9 @@ trackpad gestures. No workspaces, no tiling — just drift.
 
   Not yet implemented:
   - `wlr-screencopy` — screenshot support (grim)
-  - `xdg-decoration` — negotiate SSD vs CSD (milestone 6)
   - `wlr-layer-shell` — bars, launchers, notifications (milestone 7)
-  - XWayland — run X11 apps (milestone 12)
+  - `xdg-decoration` — negotiate SSD vs CSD (milestone 12)
+  - XWayland — run X11 apps (milestone 13)
 
 ## Core concept: infinite canvas
 
@@ -290,7 +290,7 @@ Users can rearrange, remove, or add their own eww widgets. They're just windows.
 
 ### Later: waybar via layer-shell
 
-Once `wlr-layer-shell` is implemented (milestone 10), users can optionally run
+Once `wlr-layer-shell` is implemented (milestone 7), users can optionally run
 waybar as a traditional top bar. Not needed for v1.
 
 ## Canvas background
@@ -393,7 +393,7 @@ v1 (no layer-shell needed):
 | `grim`     | Screenshot                       |
 | `swaylock` | Lock screen                      |
 
-Post layer-shell (milestone 10):
+Post layer-shell (milestone 7):
 
 | Tool     | Purpose                    |
 | -------- | -------------------------- |
@@ -493,19 +493,19 @@ requiring real hardware (udev/TTY). Milestones 1–8 work entirely in winit.
    center). Pure camera math — makes the canvas usable for daily work.
 6. **Zoom**: GPU-scaled rendering at different zoom levels. Keyboard and
    mouse-scroll zoom (pinch-to-zoom comes with trackpad gestures).
-7. **Decorations**: SSD for apps that need it. Resize grab zones with
-   cursor shape changes on hover.
-8. **Layer shell**: support waybar, fuzzel, mako, notifications. Unlocks
+7. **Layer shell**: support waybar, fuzzel, mako, notifications. Unlocks
    proper app launcher and status bar.
-9. **Config file**: TOML parsing, user-defined keybindings, input settings.
+8. **Config file**: TOML parsing, user-defined keybindings, input settings.
    Required before daily-driving.
-10. **udev backend**: DRM/KMS setup, libinput integration, logind session
+9. **udev backend**: DRM/KMS setup, libinput integration, logind session
     management. The "run on real hardware" milestone.
-11. **Trackpad gestures**: wire up libinput gesture events. 3-finger pan
+10. **Trackpad gestures**: wire up libinput gesture events. 3-finger pan
     (viewport), 3-finger double-tap-drag (move window), pinch to zoom.
     Gesture state machine with conflict resolution. Requires udev backend.
-12. **Multi-monitor**: multiple viewports on same canvas. Independent
+11. **Multi-monitor**: multiple viewports on same canvas. Independent
     camera/zoom per output. Requires udev backend.
+12. **Decorations**: SSD for apps that need it. Resize grab zones with
+    cursor shape changes on hover. Mainly needed for XWayland/legacy Qt.
 13. **XWayland**: run X11 apps (Firefox, Steam, etc).
 14. **Widgets + polish**: ship eww preset, animations, shadows, damage
     tracking optimization.

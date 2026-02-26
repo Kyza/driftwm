@@ -45,6 +45,7 @@ pub enum Action {
     ZoomOut,
     ZoomReset,
     ZoomToFit,
+    ToggleFullscreen,
 }
 
 impl Action {
@@ -156,7 +157,7 @@ pub struct KeyCombo {
 }
 
 /// Built-in dot grid shader — used when no shader_path or tile_path is configured.
-pub const DEFAULT_SHADER: &str = include_str!("../assets/shaders/dot_grid.glsl");
+pub const DEFAULT_SHADER: &str = include_str!("../assets/shaders/pink_cloud.glsl");
 
 #[derive(Clone, Debug, Default)]
 pub struct BackgroundConfig {
@@ -386,10 +387,18 @@ impl Default for Config {
             ),
             (
                 KeyCombo {
-                    modifiers: m2,
+                    modifiers: m2.clone(),
                     sym: Keysym::from(keysyms::KEY_w),
                 },
                 Action::ZoomToFit,
+            ),
+            // Fullscreen: Mod+f
+            (
+                KeyCombo {
+                    modifiers: m2,
+                    sym: Keysym::from(keysyms::KEY_f),
+                },
+                Action::ToggleFullscreen,
             ),
         ]);
 

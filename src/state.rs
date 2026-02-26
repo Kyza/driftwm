@@ -3,6 +3,7 @@ use smithay::{
     input::{Seat, SeatState, keyboard::XkbConfig, pointer::CursorImageStatus},
     reexports::{
         calloop::{LoopHandle, LoopSignal},
+        wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{
             Display, DisplayHandle,
             backend::{ClientData, ClientId, DisconnectReason},
@@ -57,6 +58,14 @@ pub fn log_err(context: &str, result: Result<impl Sized, impl std::fmt::Display>
 pub struct CalloopData {
     pub state: DriftWm,
     pub display: Display<DriftWm>,
+}
+
+/// Saved state for a fullscreen window — restored on exit.
+pub struct FullscreenState {
+    pub window: Window,
+    pub saved_location: Point<i32, Logical>,
+    pub saved_camera: Point<f64, Logical>,
+    pub saved_zoom: f64,
 }
 
 /// Central compositor state.
@@ -159,6 +168,9 @@ pub struct DriftWm {
     // client-forwarded keys, not intercepted compositor actions).
     /// Currently held repeatable action: (keycode, action, next_fire_time).
     pub held_action: Option<(u32, driftwm::config::Action, Instant)>,
+
+    /// Active fullscreen window state. When Some, viewport is locked.
+    pub fullscreen: Option<FullscreenState>,
 }
 
 /// Per-client state stored by wayland-server for each connected client.
@@ -179,7 +191,10 @@ impl DriftWm {
         loop_signal: LoopSignal,
     ) -> Self {
         let compositor_state = CompositorState::new::<Self>(&dh);
-        let xdg_shell_state = XdgShellState::new::<Self>(&dh);
+        let xdg_shell_state = XdgShellState::new_with_capabilities::<Self>(
+            &dh,
+            [xdg_toplevel::WmCapabilities::Fullscreen],
+        );
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let mut seat_state = SeatState::new();
@@ -256,6 +271,7 @@ impl DriftWm {
             cycle_state: None,
             home_return: None,
             held_action: None,
+            fullscreen: None,
         }
     }
 
@@ -561,5 +577,73 @@ impl DriftWm {
                 .insert(name.to_string(), (buffer, hotspot));
         }
         self.cursor_buffers.get(name)
+    }
+
+    /// Enter fullscreen for the given window: lock viewport, expand window to fill screen.
+    pub fn enter_fullscreen(&mut self, window: &Window) {
+        // If already fullscreen (same or different window), exit first
+        if self.fullscreen.is_some() {
+            self.exit_fullscreen();
+        }
+
+        let viewport_size = self.get_viewport_size();
+        let saved_location = self.space.element_location(window).unwrap_or_default();
+
+        self.fullscreen = Some(FullscreenState {
+            window: window.clone(),
+            saved_location,
+            saved_camera: self.camera,
+            saved_zoom: self.zoom,
+        });
+
+        // Tell the client to go fullscreen at output size
+        window.toplevel().unwrap().with_pending_state(|state| {
+            state.states.set(xdg_toplevel::State::Fullscreen);
+            state.size = Some(viewport_size);
+        });
+        window.toplevel().unwrap().send_configure();
+
+        // Lock viewport: stop all animations and momentum
+        self.zoom = 1.0;
+        self.zoom_target = None;
+        self.camera_target = None;
+        self.momentum.stop();
+        self.overview_return = None;
+        self.home_return = None;
+
+        // Snap camera to integer for pixel-perfect alignment
+        let camera_i32 = self.camera.to_i32_round();
+        self.camera = Point::from((camera_i32.x as f64, camera_i32.y as f64));
+
+        // Place window at viewport origin and raise
+        self.space.map_element(window.clone(), camera_i32, true);
+        self.space.raise_element(window, true);
+        self.update_output_from_camera();
+
+        // Ensure keyboard focus is on the fullscreen window
+        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+        let keyboard = self.seat.get_keyboard().unwrap();
+        let surface = window.toplevel().unwrap().wl_surface().clone();
+        keyboard.set_focus(self, Some(FocusTarget(surface)), serial);
+    }
+
+    /// Exit fullscreen: restore window position, camera, and zoom.
+    pub fn exit_fullscreen(&mut self) {
+        let Some(fs) = self.fullscreen.take() else {
+            return;
+        };
+
+        // Tell client to leave fullscreen
+        fs.window.toplevel().unwrap().with_pending_state(|state| {
+            state.states.unset(xdg_toplevel::State::Fullscreen);
+            state.size = None;
+        });
+        fs.window.toplevel().unwrap().send_configure();
+
+        // Restore window position, camera, zoom
+        self.space.map_element(fs.window, fs.saved_location, false);
+        self.camera = fs.saved_camera;
+        self.zoom = fs.saved_zoom;
+        self.update_output_from_camera();
     }
 }
