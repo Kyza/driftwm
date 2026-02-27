@@ -6,43 +6,43 @@ use crate::state::{DriftWm, FocusTarget};
 use smithay::{
     backend::renderer::ImportDma,
     delegate_cursor_shape, delegate_data_control, delegate_data_device, delegate_dmabuf,
-    delegate_fractional_scale, delegate_idle_inhibit,
-    delegate_keyboard_shortcuts_inhibit, delegate_output, delegate_pointer_constraints,
-    delegate_presentation, delegate_primary_selection, delegate_relative_pointer, delegate_seat,
-    delegate_viewporter, delegate_xdg_activation,
+    delegate_fractional_scale, delegate_idle_inhibit, delegate_keyboard_shortcuts_inhibit,
+    delegate_output, delegate_pointer_constraints, delegate_presentation,
+    delegate_primary_selection, delegate_relative_pointer, delegate_seat, delegate_viewporter,
+    delegate_xdg_activation,
     input::{
         Seat, SeatHandler, SeatState,
         pointer::{CursorImageStatus, PointerHandle},
     },
-    reexports::wayland_server::{Resource, protocol::{wl_output::WlOutput, wl_surface::WlSurface}},
+    reexports::wayland_server::{
+        Resource,
+        protocol::{wl_output::WlOutput, wl_surface::WlSurface},
+    },
     utils::{Logical, Point},
     wayland::{
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         fractional_scale::FractionalScaleHandler,
         idle_inhibit::IdleInhibitHandler,
-        keyboard_shortcuts_inhibit::{
-            KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitor,
-        },
+        keyboard_shortcuts_inhibit::{KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitor},
         output::OutputHandler,
         pointer_constraints::PointerConstraintsHandler,
         selection::{
+            SelectionHandler,
             data_device::{
                 ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
                 set_data_device_focus,
             },
-            primary_selection::{PrimarySelectionHandler, PrimarySelectionState, set_primary_focus},
+            primary_selection::{
+                PrimarySelectionHandler, PrimarySelectionState, set_primary_focus,
+            },
             wlr_data_control::{DataControlHandler, DataControlState},
-            SelectionHandler,
         },
         tablet_manager::TabletSeatHandler,
         xdg_activation::{
-            XdgActivationHandler, XdgActivationState, XdgActivationToken,
-            XdgActivationTokenData,
+            XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
         },
     },
 };
-
-// --- SeatHandler ---
 
 impl SeatHandler for DriftWm {
     type KeyboardFocus = FocusTarget;
@@ -79,13 +79,9 @@ impl SeatHandler for DriftWm {
 
 delegate_seat!(DriftWm);
 
-// --- SelectionHandler ---
-
 impl SelectionHandler for DriftWm {
     type SelectionUserData = ();
 }
-
-// --- DataDeviceHandler ---
 
 impl DataDeviceHandler for DriftWm {
     fn data_device_state(&self) -> &DataDeviceState {
@@ -98,21 +94,13 @@ impl ServerDndGrabHandler for DriftWm {}
 
 delegate_data_device!(DriftWm);
 
-// --- OutputHandler ---
-
 impl OutputHandler for DriftWm {}
 
 delegate_output!(DriftWm);
 
-// --- TabletSeatHandler (required by cursor_shape) ---
-
 impl TabletSeatHandler for DriftWm {}
 
-// --- CursorShapeManager ---
-
 delegate_cursor_shape!(DriftWm);
-
-// --- DmabufHandler ---
 
 impl DmabufHandler for DriftWm {
     fn dmabuf_state(&mut self) -> &mut DmabufState {
@@ -139,19 +127,13 @@ impl DmabufHandler for DriftWm {
 
 delegate_dmabuf!(DriftWm);
 
-// --- Viewporter ---
-
 delegate_viewporter!(DriftWm);
-
-// --- FractionalScale ---
 
 impl FractionalScaleHandler for DriftWm {
     fn new_fractional_scale(&mut self, _surface: WlSurface) {}
 }
 
 delegate_fractional_scale!(DriftWm);
-
-// --- XdgActivation ---
 
 impl XdgActivationHandler for DriftWm {
     fn activation_state(&mut self) -> &mut XdgActivationState {
@@ -181,8 +163,6 @@ impl XdgActivationHandler for DriftWm {
 
 delegate_xdg_activation!(DriftWm);
 
-// --- PrimarySelection ---
-
 impl PrimarySelectionHandler for DriftWm {
     fn primary_selection_state(&self) -> &PrimarySelectionState {
         &self.primary_selection_state
@@ -191,8 +171,6 @@ impl PrimarySelectionHandler for DriftWm {
 
 delegate_primary_selection!(DriftWm);
 
-// --- DataControl (wlr) ---
-
 impl DataControlHandler for DriftWm {
     fn data_control_state(&self) -> &DataControlState {
         &self.data_control_state
@@ -200,8 +178,6 @@ impl DataControlHandler for DriftWm {
 }
 
 delegate_data_control!(DriftWm);
-
-// --- PointerConstraints ---
 
 impl PointerConstraintsHandler for DriftWm {
     fn new_constraint(&mut self, _surface: &WlSurface, _pointer: &PointerHandle<Self>) {}
@@ -217,14 +193,12 @@ impl PointerConstraintsHandler for DriftWm {
 
 delegate_pointer_constraints!(DriftWm);
 
-// --- RelativePointer ---
-
 delegate_relative_pointer!(DriftWm);
 
-// --- KeyboardShortcutsInhibit ---
-
 impl KeyboardShortcutsInhibitHandler for DriftWm {
-    fn keyboard_shortcuts_inhibit_state(&mut self) -> &mut smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitState {
+    fn keyboard_shortcuts_inhibit_state(
+        &mut self,
+    ) -> &mut smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitState {
         &mut self.keyboard_shortcuts_inhibit_state
     }
 
@@ -237,8 +211,6 @@ impl KeyboardShortcutsInhibitHandler for DriftWm {
 
 delegate_keyboard_shortcuts_inhibit!(DriftWm);
 
-// --- IdleInhibit ---
-
 impl IdleInhibitHandler for DriftWm {
     fn inhibit(&mut self, _surface: WlSurface) {}
     fn uninhibit(&mut self, _surface: WlSurface) {}
@@ -246,11 +218,7 @@ impl IdleInhibitHandler for DriftWm {
 
 delegate_idle_inhibit!(DriftWm);
 
-// --- Presentation ---
-
 delegate_presentation!(DriftWm);
-
-// --- ForeignToplevel ---
 
 use driftwm::protocols::foreign_toplevel::{ForeignToplevelHandler, ForeignToplevelManagerState};
 
@@ -293,9 +261,10 @@ impl ForeignToplevelHandler for DriftWm {
     }
 
     fn unset_fullscreen(&mut self, wl_surface: WlSurface) {
-        let is_fullscreen = self.fullscreen.as_ref().is_some_and(|fs| {
-            fs.window.toplevel().unwrap().wl_surface() == &wl_surface
-        });
+        let is_fullscreen = self
+            .fullscreen
+            .as_ref()
+            .is_some_and(|fs| fs.window.toplevel().unwrap().wl_surface() == &wl_surface);
         if is_fullscreen {
             self.exit_fullscreen();
         }

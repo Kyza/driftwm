@@ -1,10 +1,10 @@
+mod backend;
 mod focus;
 mod grabs;
 mod handlers;
 mod input;
 mod render;
 mod state;
-mod winit;
 
 use state::{CalloopData, ClientState, log_err};
 use std::sync::Arc;
@@ -17,6 +17,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
+
+    // Parse --backend arg
+    let backend_name = std::env::args()
+        .skip_while(|a| a != "--backend")
+        .nth(1)
+        .unwrap_or_else(|| "winit".to_string());
 
     // Create calloop event loop
     let mut event_loop: smithay::reexports::calloop::EventLoop<CalloopData> =
@@ -38,10 +44,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         display,
     };
 
-    // Initialize winit backend BEFORE setting WAYLAND_DISPLAY.
-    // winit needs to connect to the parent compositor (e.g. GNOME),
-    // not to our own socket.
-    winit::init_winit(&mut event_loop, &mut data)?;
+    // Initialize backend BEFORE setting WAYLAND_DISPLAY.
+    match backend_name.as_str() {
+        "udev" => backend::udev::init_udev(&mut event_loop, &mut data)?,
+        _ => {
+            // winit needs to connect to the parent compositor first
+            backend::winit::init_winit(&mut event_loop, &mut data)?;
+        }
+    }
 
     // Register the Wayland display FD so calloop wakes on client messages
     let poll_fd = data.display.backend().poll_fd().try_clone_to_owned()?;
@@ -65,7 +75,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_string_lossy()
         .into_owned();
     tracing::info!("Listening on WAYLAND_DISPLAY={socket_name}");
+    // Standard Wayland session env vars for child processes
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &socket_name) };
+    unsafe { std::env::set_var("XDG_SESSION_TYPE", "wayland") };
+    unsafe { std::env::set_var("XDG_CURRENT_DESKTOP", "driftwm") };
+    unsafe { std::env::set_var("MOZ_ENABLE_WAYLAND", "1") };
+    unsafe { std::env::set_var("QT_QPA_PLATFORM", "wayland") };
+    unsafe { std::env::set_var("SDL_VIDEODRIVER", "wayland") };
+    unsafe { std::env::set_var("GDK_BACKEND", "wayland,x11") };
 
     event_loop
         .handle()

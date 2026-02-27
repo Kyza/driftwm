@@ -49,6 +49,7 @@ pub enum Action {
     ZoomReset,
     ZoomToFit,
     ToggleFullscreen,
+    Quit,
 }
 
 impl Action {
@@ -155,6 +156,22 @@ impl CycleModifier {
 pub struct KeyCombo {
     pub modifiers: Modifiers,
     pub sym: smithay::input::keyboard::Keysym,
+}
+
+impl KeyCombo {
+    /// Normalize keysym quirks so bindings match intuitively:
+    /// - Uppercase letters (A-Z) → lowercase (a-z), Shift untouched
+    /// - ISO_Left_Tab → Tab + Shift (XKB emits ISO_Left_Tab for Shift+Tab)
+    pub fn normalize(&mut self) {
+        use smithay::input::keyboard::keysyms;
+        let raw = self.sym.raw();
+        if (0x41..=0x5a).contains(&raw) {
+            self.sym = smithay::input::keyboard::Keysym::from(raw + 0x20);
+        } else if raw == keysyms::KEY_ISO_Left_Tab {
+            self.sym = smithay::input::keyboard::Keysym::from(keysyms::KEY_Tab);
+            self.modifiers.shift = true;
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

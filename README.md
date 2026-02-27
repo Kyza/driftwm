@@ -32,28 +32,39 @@ an infinitely generated background, or you can tile an image of any size.
 
 See [docs/DESIGN.md](docs/DESIGN.md) for the full specification.
 
-## Status
+## Features
 
-Early development. Current milestone: **9 — udev backend**.
+Early development — usable as a daily driver on single-monitor setups.
 
-The compositor runs nested via winit backend, renders xdg-shell clients on an
-infinite 2D canvas with viewport panning (scroll, click-drag, keyboard), scroll
-momentum with friction decay, GPU-scaled zoom (keyboard and scroll-wheel, with
-cursor-anchored zoom and dynamic min-zoom), GLSL shader backgrounds, tiled image
-backgrounds, edge auto-pan during window drag, and compositor-rendered xcursor.
-Animated camera navigation between windows (directional cone search, MRU cycling,
-home toggle). Layer shell support for panels/docks (waybar, sfwbar, cairo-dock)
-and launchers (fuzzel), with foreign toplevel management for taskbar integration.
-20 Wayland protocols implemented including DMA-BUF, popups, and cross-app clipboard.
-All keybindings, mouse bindings, and settings are configurable via TOML.
+- Infinite 2D canvas with viewport panning, zoom, and scroll momentum
+- GPU-scaled zoom with cursor-anchored zoom and dynamic min-zoom
+- Window navigation: directional jump (cone search), MRU cycling, home toggle
+- Layer shell support (waybar, fuzzel, mako) + foreign toplevel management
+- GLSL shader backgrounds or tiled images, scrolling with the viewport
+- Runs nested (winit) or on real hardware (udev/DRM with libseat)
+- TOML config — all keybindings, mouse bindings, and settings are configurable
+- 20+ Wayland protocols: DMA-BUF, popups, clipboard, layer shell, and more
 
 ## Build & run
 
-Requires Rust (edition 2024).
+Requires Rust (edition 2024) and these system libraries:
+
+**Fedora:**
+
+```bash
+sudo dnf install libseat-devel libdisplay-info-devel libinput-devel mesa-libgbm-devel
+```
+
+**Ubuntu/Debian:**
+
+```bash
+sudo apt install libseat-dev libdisplay-info-dev libinput-dev libudev-dev
+```
 
 ```bash
 cargo build
 cargo run                         # run nested in existing Wayland session
+cargo run -- --backend udev       # run on real hardware (from TTY)
 RUST_LOG=debug cargo run          # with debug logging
 ```
 
@@ -65,36 +76,32 @@ WAYLAND_DISPLAY=wayland-1 foot       # or alacritty, ptyxis, etc.
 
 The socket name is printed at startup — use that if it differs from `wayland-1`.
 
-## Keybinds
+## Quick start
 
-| Shortcut                | Action                              |
-| ----------------------- | ----------------------------------- |
-| `Mod+Return`            | Open terminal                       |
-| `Mod+Q`                 | Close window                        |
-| `Mod+C`                 | Center focused window               |
-| `Mod+Arrow`             | Jump to nearest window in direction |
-| `CycleMod+Tab`          | Cycle windows forward (MRU)         |
-| `CycleMod+Shift+Tab`    | Cycle windows backward              |
-| `Mod+A`                 | Toggle home (0,0) ↔ previous        |
-| `Mod+Shift+Left-click`  | Drag to move window                 |
-| `Mod+Shift+Right-click` | Drag to resize window               |
-| `Mod+Left-click`        | Drag to pan viewport                |
-| `Mod+Shift+Arrow`       | Nudge focused window by 20px        |
-| `Mod+Ctrl+Arrow`        | Pan viewport by step                |
-| `Mod+=`                 | Zoom in                             |
-| `Mod+-`                 | Zoom out                            |
-| `Mod+0`                 | Reset zoom to 100%                  |
-| `Mod+W`                 | Zoom to fit all windows (toggle)    |
-| `Mod+Scroll`            | Zoom at cursor                      |
+`mod` is Super by default (configurable). Essential keybindings:
 
-CSD-initiated move/resize (title bar drag, border drag) also works.
+| Shortcut              | Action                        |
+| --------------------- | ----------------------------- |
+| `mod+return`          | Open terminal                 |
+| `mod+d`               | Open launcher                 |
+| `mod+q`               | Close window                  |
+| `mod+ctrl+shift+q`    | Quit compositor               |
+| `mod+scroll`          | Zoom at cursor                |
+| `alt+tab`             | Cycle windows                 |
 
-More keybinds planned — see [docs/DESIGN.md](docs/DESIGN.md#keyboard-shortcuts).
+All keybindings are configurable. See [`config.example.toml`](config.example.toml)
+for the full list of defaults, mouse bindings, and settings.
 
 ## Configuration
 
 Config file: `~/.config/driftwm/config.toml` (respects `XDG_CONFIG_HOME`).
-See [`config.example.toml`](config.example.toml) for all options with defaults.
+
+Copy the example, uncomment what you want to change:
+
+```bash
+mkdir -p ~/.config/driftwm
+cp config.example.toml ~/.config/driftwm/config.toml
+```
 
 Missing file uses built-in defaults. Partial configs merge with defaults —
 only specify what you want to change. Use `"none"` to unbind a default binding.
@@ -109,7 +116,7 @@ only specify what you want to change. Use `"none"` to unbind a default binding.
 6. **Zoom** — GPU-scaled rendering, cursor-anchored zoom, dynamic min-zoom _(done)_
 7. **Layer shell** — waybar, fuzzel, foreign toplevel management _(done)_
 8. **Config file** — TOML parsing, user keybindings/mouse bindings/settings _(done)_
-9. udev backend — DRM/KMS, libinput, session management
+9. **udev backend** — DRM/KMS, libinput, libseat session management _(done)_
 10. Trackpad gestures — 3-finger pan/double-tap-drag, gesture state machine
 11. Multi-monitor — multiple viewports on same canvas
 12. Decorations — SSD fallback, resize grab zones

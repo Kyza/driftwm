@@ -22,8 +22,8 @@
 
 [navigation]
 # animation_speed = 0.3       # camera lerp factor (higher = faster)
-# nudge_step = 20             # px per Mod+Shift+Arrow
-# pan_step = 100.0            # px per Mod+Ctrl+Arrow
+# nudge_step = 20             # px per nudge-window action
+# pan_step = 100.0            # px per pan-viewport action
 
 [navigation.edge_pan]
 # zone = 100.0                # activation zone width (px from viewport edge)
@@ -34,14 +34,17 @@
 # step = 1.1                  # multiplier per keypress (1.1 = 10% per press)
 # fit_padding = 100.0         # canvas px padding for zoom-to-fit
 
+[output]
+# scale = 1.0                 # display scale factor (1.0, 1.5, 2.0)
+
 [background]
-# shader_path = "~/.config/driftwm/bg.frag"   # custom GLSL fragment shader
+# shader_path = "~/.config/driftwm/bg.glsl"   # custom GLSL fragment shader
 # tile_path = "~/.config/driftwm/tile.png"     # tiled image (mutually exclusive with shader)
 
 # Keyboard bindings: "Modifier+...+Keysym" = "action [arg]"
 # Merges with defaults. Use "none" to unbind a default binding.
-# "Mod" expands to mod_key. Literal modifiers: Alt, Super, Ctrl, Shift.
-# Keysyms are XKB names (case-insensitive): Return, Tab, Up, a, equal, etc.
+# "mod" expands to mod_key. Literal modifiers: alt, super, ctrl, shift.
+# Keysyms are XKB names (case-insensitive): return, tab, up, a, equal, etc.
 #
 # Actions:
 #   exec <cmd>              — spawn a command (whitespace-split; use exec sh -c '...' for complex commands)
@@ -57,47 +60,49 @@
 #   zoom-reset              — zoom to 1.0
 #   zoom-to-fit             — fit all windows in viewport
 #   toggle-fullscreen       — toggle focused window fullscreen
+#   quit                    — exit the compositor
 #   none                    — unbind this key combo
 #
 # Directions: up, down, left, right, up-left, up-right, down-left, down-right
 
 [keybindings]
-# "Mod+Return" = "exec foot"
-# "Mod+d" = "exec fuzzel"
-# "Mod+q" = "close-window"
-# "Mod+f" = "toggle-fullscreen"
-# "Mod+c" = "center-window"
-# "Mod+a" = "home-toggle"
-# "Mod+Up" = "center-nearest up"
-# "Mod+Down" = "center-nearest down"
-# "Mod+Left" = "center-nearest left"
-# "Mod+Right" = "center-nearest right"
-# "Mod+Shift+Up" = "nudge-window up"
-# "Mod+Shift+Down" = "nudge-window down"
-# "Mod+Shift+Left" = "nudge-window left"
-# "Mod+Shift+Right" = "nudge-window right"
-# "Mod+Ctrl+Up" = "pan-viewport up"
-# "Mod+Ctrl+Down" = "pan-viewport down"
-# "Mod+Ctrl+Left" = "pan-viewport left"
-# "Mod+Ctrl+Right" = "pan-viewport right"
-# "Alt+Tab" = "cycle-windows forward"
-# "Alt+Shift+ISO_Left_Tab" = "cycle-windows backward"
-# "Mod+equal" = "zoom-in"
-# "Mod+minus" = "zoom-out"
-# "Mod+0" = "zoom-reset"
-# "Mod+w" = "zoom-to-fit"
+# "mod+return" = "exec foot"
+# "mod+d" = "exec fuzzel"
+# "mod+q" = "close-window"
+# "mod+f" = "toggle-fullscreen"
+# "mod+c" = "center-window"
+# "mod+a" = "home-toggle"
+# "mod+up" = "center-nearest up"
+# "mod+down" = "center-nearest down"
+# "mod+left" = "center-nearest left"
+# "mod+right" = "center-nearest right"
+# "mod+shift+up" = "nudge-window up"
+# "mod+shift+down" = "nudge-window down"
+# "mod+shift+left" = "nudge-window left"
+# "mod+shift+right" = "nudge-window right"
+# "mod+ctrl+up" = "pan-viewport up"
+# "mod+ctrl+down" = "pan-viewport down"
+# "mod+ctrl+left" = "pan-viewport left"
+# "mod+ctrl+right" = "pan-viewport right"
+# "alt+tab" = "cycle-windows forward"
+# "alt+shift+tab" = "cycle-windows backward"
+# "mod+equal" = "zoom-in"
+# "mod+minus" = "zoom-out"
+# "mod+0" = "zoom-reset"
+# "mod+w" = "zoom-to-fit"
+# "mod+ctrl+shift+q" = "quit"
 
 # Mouse bindings: "Modifier+...+Trigger" = "action"
 # Only modifier-based bindings — canvas fundamentals are hardcoded:
 #   scroll on empty canvas → pan, drag on empty → pan,
 #   click on window → focus, CSD drag → move/resize
-# Triggers: Left, Right, Middle (buttons), Scroll (axis)
+# Triggers: left, right, middle (buttons), scroll (axis)
 # Merges with defaults. Use "none" to unbind.
 #
 # Mouse actions: move-window, resize-window, pan-viewport, zoom, none
 
 [mouse]
-# "Mod+Shift+Left" = "move-window"
-# "Mod+Shift+Right" = "resize-window"
-# "Mod+Left" = "pan-viewport"
-# "Mod+Scroll" = "zoom"
+# "mod+shift+left" = "move-window"
+# "mod+shift+right" = "resize-window"
+# "mod+left" = "pan-viewport"
+# "mod+scroll" = "zoom"

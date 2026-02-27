@@ -257,6 +257,10 @@ impl DriftWm {
                     }
                 }
             }
+            Action::Quit => {
+                tracing::info!("Quit action triggered — stopping compositor");
+                self.loop_signal.stop();
+            }
         }
     }
 

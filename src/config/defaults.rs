@@ -7,8 +7,6 @@ use super::types::*;
 pub(super) fn default_bindings(mod_key: ModKey, cycle_mod: CycleModifier) -> HashMap<KeyCombo, Action> {
     let terminal = detect_terminal();
     let launcher = detect_launcher();
-    tracing::info!("Terminal command: {terminal}");
-    tracing::info!("Launcher command: {launcher}");
 
     let m = mod_key.base();
     let m_shift = Modifiers {
@@ -70,7 +68,7 @@ pub(super) fn default_bindings(mod_key: ModKey, cycle_mod: CycleModifier) -> Has
         ),
         (
             KeyCombo {
-                modifiers: m_shift,
+                modifiers: m_shift.clone(),
                 sym: Keysym::from(keysyms::KEY_Right),
             },
             Action::NudgeWindow(Direction::Right),
@@ -155,7 +153,7 @@ pub(super) fn default_bindings(mod_key: ModKey, cycle_mod: CycleModifier) -> Has
         (
             KeyCombo {
                 modifiers: cyc_shift,
-                sym: Keysym::from(keysyms::KEY_ISO_Left_Tab),
+                sym: Keysym::from(keysyms::KEY_Tab),
             },
             Action::CycleWindows { backward: true },
         ),
@@ -189,10 +187,21 @@ pub(super) fn default_bindings(mod_key: ModKey, cycle_mod: CycleModifier) -> Has
         ),
         (
             KeyCombo {
-                modifiers: m,
+                modifiers: m.clone(),
                 sym: Keysym::from(keysyms::KEY_f),
             },
             Action::ToggleFullscreen,
+        ),
+        (
+            KeyCombo {
+                modifiers: Modifiers {
+                    ctrl: true,
+                    shift: true,
+                    ..m.clone()
+                },
+                sym: Keysym::from(keysyms::KEY_q),
+            },
+            Action::Quit,
         ),
     ])
 }

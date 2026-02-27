@@ -8,9 +8,17 @@ authors = ["Klim Kostiuk <2601074@gmail.com>"]
 [dependencies]
 smithay = { version = "0.7.0", default-features = false, features = [
     "backend_winit",
+    "backend_udev",
+    "backend_drm",
+    "backend_gbm",
+    "backend_libinput",
+    "backend_session_libseat",
+    "backend_egl",
+    "renderer_gl",
     "wayland_frontend",
     "desktop",
 ] }
+smithay-drm-extras = "0.1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 xcursor = "0.3"
 serde = { version = "1", features = ["derive"] }

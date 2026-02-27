@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 driftwm — a trackpad-first infinite canvas Wayland compositor written in Rust. Windows float on an unbounded 2D plane navigated via trackpad gestures (pan, zoom, pinch). No workspaces, no tiling. Built on [smithay](https://github.com/Smithay/smithay).
 
-The project is in early development (milestone 8 complete). See `docs/DESIGN.md` for the full specification and `docs/CAVEATS.md` for architectural pitfalls.
+The project is in early development (milestone 9 complete). See `docs/DESIGN.md` for the full specification and `docs/CAVEATS.md` for architectural pitfalls.
 
 ## Conventions
 
@@ -40,13 +40,13 @@ The compositor uses a **camera/viewport** model: the screen is a viewport onto a
 
 Current source layout:
 
+- `backend/` — `mod.rs` (Backend enum: Winit/Udev + renderer accessor), `winit.rs` (winit backend init + ~60fps timer render loop), `udev.rs` (udev/DRM backend init + VBlank-driven render loop, libseat session, libinput, hotplug)
 - `state/` — `mod.rs` (DriftWm struct, CalloopData, FullscreenState, ClientState), `animation.rs` (camera/zoom/momentum/edge-pan animation, key repeat), `navigation.rs` (navigate_to_window, focus history, MRU cycle), `fullscreen.rs` (enter/exit fullscreen, pointer remap)
 - `config/` — `mod.rs` (Config struct, load/parse, lookup methods), `types.rs` (Action, Direction, Modifiers, KeyCombo, MouseBinding), `parse.rs` (string→type parsers for combos/actions), `defaults.rs` (default key/mouse bindings, terminal/launcher detection), `toml.rs` (serde structs, config path)
 - `canvas.rs` — coordinate transforms (ScreenPos/CanvasPos), camera math, cone search, zoom helpers (zoom_to_fit, zoom_anchor_camera, snap_zoom, dynamic_min_zoom)
 - `focus.rs` — FocusTarget(WlSurface) newtype with KeyboardTarget/PointerTarget/TouchTarget impls
-- `winit.rs` — winit backend init + render loop (~60fps timer), RescaleRenderElement zoom pipeline
-- `render.rs` — tile background, layer elements, cursor rendering helpers
-- `input/` — `mod.rs` (keyboard handling, pointer motion, surface_under hit-testing), `actions.rs` (execute_action dispatch for all keybindings), `pointer.rs` (button/axis handling, compositor resize/pan grabs)
+- `render.rs` — OutputRenderElements, compose_frame(), post_render(), update_background_element(), tile/cursor/layer rendering helpers
+- `input/` — `mod.rs` (keyboard handling, pointer motion absolute+relative, surface_under hit-testing), `actions.rs` (execute_action dispatch for all keybindings), `pointer.rs` (button/axis handling, compositor resize/pan grabs)
 - `grabs/` — `move_grab.rs` (MoveSurfaceGrab), `resize_grab.rs` (ResizeSurfaceGrab, ResizeState), `pan_grab.rs` (PanGrab for viewport panning)
 - `handlers/` — `compositor.rs` (commit, resize repositioning, dmabuf, layer commit), `layer_shell.rs` (wlr-layer-shell handler), `xdg_shell.rs` (CSD move/resize, window centering, fullscreen, popup grabs), `mod.rs` (seat, data device, output, cursor_shape, foreign toplevel, 20 protocol delegates)
 - `protocols/` — `foreign_toplevel.rs` (zwlr-foreign-toplevel-management-v1, adapted from niri)

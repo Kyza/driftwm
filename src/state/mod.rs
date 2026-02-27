@@ -41,10 +41,12 @@ use smithay::wayland::selection::wlr_data_control::DataControlState;
 use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::xdg_activation::XdgActivationState;
 use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
-use smithay::backend::renderer::gles::{GlesPixelProgram, GlesRenderer, element::PixelShaderElement};
-use smithay::backend::winit::WinitGraphicsBackend;
+use smithay::backend::renderer::gles::{GlesPixelProgram, element::PixelShaderElement};
 use smithay::utils::Transform;
 
+use smithay::backend::session::libseat::LibSeatSession;
+
+use crate::backend::Backend;
 use driftwm::canvas::MomentumState;
 use driftwm::config::Config;
 
@@ -124,7 +126,7 @@ pub struct DriftWm {
     pub cursor_buffers: HashMap<String, (MemoryRenderBuffer, Point<i32, Logical>)>,
 
     // Backend (moved here so protocol handlers can access the renderer)
-    pub backend: Option<WinitGraphicsBackend<GlesRenderer>>,
+    pub backend: Option<Backend>,
     /// Compiled background shader program (compiled once at startup).
     pub background_shader: Option<GlesPixelProgram>,
     /// Cached shader background element (stable Id for damage tracking).
@@ -182,6 +184,13 @@ pub struct DriftWm {
 
     /// Active fullscreen window state. When Some, viewport is locked.
     pub fullscreen: Option<FullscreenState>,
+
+    /// Libseat session for VT switching (udev backend only).
+    pub session: Option<LibSeatSession>,
+
+    /// Damage flag — set when something changed and a new frame is needed.
+    /// Checked by the udev timer and VBlank handler to avoid no-op renders.
+    pub redraw_needed: bool,
 }
 
 /// Per-client state stored by wayland-server for each connected client.
@@ -289,7 +298,18 @@ impl DriftWm {
             home_return: None,
             held_action: None,
             fullscreen: None,
+            session: None,
+            redraw_needed: true,
         }
+    }
+
+    /// True if any animation is still in progress and needs continued rendering.
+    pub fn has_active_animations(&self) -> bool {
+        self.camera_target.is_some()
+            || self.zoom_target.is_some()
+            || self.edge_pan_velocity.is_some()
+            || self.held_action.is_some()
+            || (self.momentum.velocity.x != 0.0 || self.momentum.velocity.y != 0.0)
     }
 
     /// Sync each output's position to the current camera, so render_output

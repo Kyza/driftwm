@@ -11,6 +11,7 @@ pub(super) struct ConfigFile {
     pub cursor: CursorConfig,
     pub navigation: NavigationConfig,
     pub zoom: ZoomConfig,
+    pub output: OutputConfig,
     pub background: BackgroundFileConfig,
     pub keybindings: Option<HashMap<String, String>>,
     pub mouse: Option<HashMap<String, String>>,
@@ -66,6 +67,12 @@ pub(super) struct EdgePanConfig {
 pub(super) struct ZoomConfig {
     pub step: Option<f64>,
     pub fit_padding: Option<f64>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub(super) struct OutputConfig {
+    pub scale: Option<f64>,
 }
 
 #[derive(Deserialize, Default)]

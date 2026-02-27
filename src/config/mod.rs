@@ -39,6 +39,8 @@ pub struct Config {
     pub zoom_step: f64,
     /// Padding (canvas pixels) around the bounding box for ZoomToFit.
     pub zoom_fit_padding: f64,
+    /// Output scale factor for the udev backend (1.0, 1.5, 2.0, etc).
+    pub output_scale: f64,
     pub background: BackgroundConfig,
     bindings: HashMap<KeyCombo, Action>,
     pub mouse_bindings: HashMap<MouseBinding, MouseAction>,
@@ -46,10 +48,11 @@ pub struct Config {
 
 impl Config {
     pub fn lookup(&self, modifiers: &ModifiersState, sym: Keysym) -> Option<&Action> {
-        let combo = KeyCombo {
+        let mut combo = KeyCombo {
             modifiers: Modifiers::from_state(modifiers),
             sym,
         };
+        combo.normalize();
         self.bindings.get(&combo)
     }
 
@@ -139,12 +142,16 @@ impl Config {
             }
         };
 
-        let mut bindings = default_bindings(mod_key, cycle_modifier);
+        let mut bindings: HashMap<KeyCombo, Action> = default_bindings(mod_key, cycle_modifier)
+            .into_iter()
+            .map(|(mut k, v)| { k.normalize(); (k, v) })
+            .collect();
 
         if let Some(user_bindings) = raw.keybindings {
             for (key_str, action_str) in &user_bindings {
                 match parse_key_combo(key_str, mod_key) {
-                    Ok(combo) => {
+                    Ok(mut combo) => {
+                        combo.normalize();
                         if action_str == "none" {
                             bindings.remove(&combo);
                         } else {
@@ -206,6 +213,7 @@ impl Config {
             cycle_modifier,
             zoom_step: raw.zoom.step.unwrap_or(1.1),
             zoom_fit_padding: raw.zoom.fit_padding.unwrap_or(100.0),
+            output_scale: raw.output.scale.unwrap_or(1.0),
             background,
             bindings,
             mouse_bindings,
