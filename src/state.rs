@@ -647,4 +647,25 @@ impl DriftWm {
         self.zoom = fs.saved_zoom;
         self.update_output_from_camera();
     }
+
+    /// Exit fullscreen and remap the pointer to maintain its screen position
+    /// under the restored camera/zoom. Returns the new canvas position.
+    pub fn exit_fullscreen_remap_pointer(
+        &mut self,
+        canvas_pos: Point<f64, Logical>,
+    ) -> Point<f64, Logical> {
+        let old_camera = self.camera;
+        let old_zoom = self.zoom;
+        self.exit_fullscreen();
+        let screen: Point<f64, Logical> = Point::from((
+            (canvas_pos.x - old_camera.x) * old_zoom,
+            (canvas_pos.y - old_camera.y) * old_zoom,
+        ));
+        let new_pos = Point::from((
+            screen.x / self.zoom + self.camera.x,
+            screen.y / self.zoom + self.camera.y,
+        ));
+        self.warp_pointer(new_pos);
+        new_pos
+    }
 }

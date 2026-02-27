@@ -431,13 +431,33 @@ impl DriftWm {
         let button_state = event.state();
         let pointer = self.seat.get_pointer().unwrap();
 
-        if button_state == ButtonState::Pressed && self.fullscreen.is_none() {
+        if button_state == ButtonState::Pressed {
             self.last_scroll_pan = None;
             self.momentum.stop();
-            let pos = pointer.current_location();
+            let mut pos = pointer.current_location();
             let keyboard = self.seat.get_keyboard().unwrap();
             let mods = keyboard.modifier_state();
             let wm_mod = self.config.mod_key.is_pressed(&mods);
+
+            // During fullscreen: Mod-based clicks exit fullscreen first and
+            // proceed to compositor grabs; plain clicks forward to the app.
+            if self.fullscreen.is_some() {
+                if wm_mod {
+                    pos = self.exit_fullscreen_remap_pointer(pos);
+                } else {
+                    pointer.button(
+                        self,
+                        &ButtonEvent {
+                            button,
+                            state: button_state,
+                            serial,
+                            time: Event::time_msec(&event),
+                        },
+                    );
+                    pointer.frame(self);
+                    return;
+                }
+            }
 
             // 0. If pointer is over a layer surface, just forward the click
             // (no compositor grabs — layer surfaces can't be moved/resized)
@@ -622,24 +642,34 @@ impl DriftWm {
             return;
         }
 
-        // During fullscreen, forward all scroll to the app (no pan/zoom)
+        // During fullscreen: Mod+scroll exits fullscreen and zooms;
+        // plain scroll forwards to the app.
         if self.fullscreen.is_some() {
-            let pointer = self.seat.get_pointer().unwrap();
-            let mut frame = AxisFrame::new(Event::time_msec(&event))
-                .source(event.source());
-            for axis in [Axis::Horizontal, Axis::Vertical] {
-                if let Some(amount) = event.amount(axis) {
-                    frame = frame
-                        .value(axis, amount)
-                        .relative_direction(axis, event.relative_direction(axis));
+            let keyboard = self.seat.get_keyboard().unwrap();
+            let mods = keyboard.modifier_state();
+            if self.config.mod_key.is_pressed(&mods) {
+                let pointer = self.seat.get_pointer().unwrap();
+                let pos = pointer.current_location();
+                self.exit_fullscreen_remap_pointer(pos);
+                // Fall through to Mod+scroll zoom logic below
+            } else {
+                let pointer = self.seat.get_pointer().unwrap();
+                let mut frame = AxisFrame::new(Event::time_msec(&event))
+                    .source(event.source());
+                for axis in [Axis::Horizontal, Axis::Vertical] {
+                    if let Some(amount) = event.amount(axis) {
+                        frame = frame
+                            .value(axis, amount)
+                            .relative_direction(axis, event.relative_direction(axis));
+                    }
+                    if let Some(v120) = event.amount_v120(axis) {
+                        frame = frame.v120(axis, v120 as i32);
+                    }
                 }
-                if let Some(v120) = event.amount_v120(axis) {
-                    frame = frame.v120(axis, v120 as i32);
-                }
+                pointer.axis(self, frame);
+                pointer.frame(self);
+                return;
             }
-            pointer.axis(self, frame);
-            pointer.frame(self);
-            return;
         }
 
         let keyboard = self.seat.get_keyboard().unwrap();
