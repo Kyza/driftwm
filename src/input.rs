@@ -19,12 +19,9 @@ use smithay::{
 };
 
 use driftwm::canvas::{self, CanvasPos, ScreenPos, canvas_to_screen, screen_to_canvas};
-use driftwm::config::Action;
+use driftwm::config::{self, Action, MouseAction};
 use crate::grabs::{MoveSurfaceGrab, PanGrab, ResizeState, ResizeSurfaceGrab};
 use crate::state::{DriftWm, FocusTarget, log_err};
-
-const BTN_LEFT: u32 = 0x110;
-const BTN_RIGHT: u32 = 0x111;
 
 impl DriftWm {
     /// Process a single input event from any backend (winit, libinput, etc).
@@ -105,7 +102,7 @@ impl DriftWm {
 
         self.momentum.stop();
         match action {
-            Action::SpawnCommand(cmd) => {
+            Action::Exec(cmd) => {
                 tracing::info!("Spawning: {cmd}");
                 let mut parts = cmd.split_whitespace();
                 if let Some(program) = parts.next() {
@@ -421,10 +418,9 @@ impl DriftWm {
     }
 
     /// Priority order when button pressed:
-    /// 1. Mod+Shift + button on window → move (left) or resize (right)
-    /// 2. Mod + left-drag → pan canvas (regardless of what's under cursor)
+    /// 1. Configured mouse bindings (move, resize, pan, etc.)
+    /// 2. Normal click on window → focus + raise + forward to client
     /// 3. Left-click on empty canvas → pan canvas
-    /// 4. Normal click → click-to-focus + forward to client
     fn on_pointer_button<I: InputBackend>(&mut self, event: I::PointerButtonEvent) {
         let serial = SERIAL_COUNTER.next_serial();
         let button = event.button_code();
@@ -437,12 +433,11 @@ impl DriftWm {
             let mut pos = pointer.current_location();
             let keyboard = self.seat.get_keyboard().unwrap();
             let mods = keyboard.modifier_state();
-            let wm_mod = self.config.mod_key.is_pressed(&mods);
 
-            // During fullscreen: Mod-based clicks exit fullscreen first and
+            // During fullscreen: bound clicks exit fullscreen first and
             // proceed to compositor grabs; plain clicks forward to the app.
             if self.fullscreen.is_some() {
-                if wm_mod {
+                if self.config.mouse_button_lookup(&mods, button).is_some() {
                     pos = self.exit_fullscreen_remap_pointer(pos);
                 } else {
                     pointer.button(
@@ -459,8 +454,7 @@ impl DriftWm {
                 }
             }
 
-            // 0. If pointer is over a layer surface, just forward the click
-            // (no compositor grabs — layer surfaces can't be moved/resized)
+            // Layer surfaces: just forward (no compositor grabs)
             if self.pointer_over_layer {
                 pointer.button(
                     self,
@@ -475,66 +469,69 @@ impl DriftWm {
                 return;
             }
 
-            // 1. Mod+Shift + button on window → move (left) or resize (right)
-            if wm_mod && mods.shift {
-                let element_under = self
-                    .space
-                    .element_under(pos)
-                    .map(|(w, _)| w.clone());
-
-                if let Some(window) = element_under {
-                    if button == BTN_LEFT {
-                        let initial_window_location =
-                            self.space.element_location(&window).unwrap();
-                        let start_data = GrabStartData {
-                            focus: None,
-                            button,
-                            location: pos,
-                        };
-                        let grab = MoveSurfaceGrab {
-                            start_data,
-                            window,
-                            initial_window_location,
-                        };
+            // Check configured mouse bindings
+            if let Some(action) = self.config.mouse_button_lookup(&mods, button).cloned() {
+                match action {
+                    MouseAction::MoveWindow => {
+                        if let Some((window, _)) =
+                            self.space.element_under(pos).map(|(w, l)| (w.clone(), l))
+                        {
+                            let initial_window_location =
+                                self.space.element_location(&window).unwrap();
+                            let start_data = GrabStartData {
+                                focus: None,
+                                button,
+                                location: pos,
+                            };
+                            let grab = MoveSurfaceGrab {
+                                start_data,
+                                window,
+                                initial_window_location,
+                            };
+                            pointer.set_grab(self, grab, serial, Focus::Clear);
+                            return;
+                        }
+                        // No window under cursor — fall through to normal click
+                    }
+                    MouseAction::ResizeWindow => {
+                        if let Some((window, _)) =
+                            self.space.element_under(pos).map(|(w, l)| (w.clone(), l))
+                        {
+                            self.start_compositor_resize(
+                                &pointer, &window, pos, button, serial,
+                            );
+                            return;
+                        }
+                        // No window under cursor — fall through
+                    }
+                    MouseAction::PanViewport => {
+                        let grab = self.make_pan_grab(pos, button, false);
                         pointer.set_grab(self, grab, serial, Focus::Clear);
                         return;
                     }
-
-                    if button == BTN_RIGHT {
-                        self.start_compositor_resize(&pointer, &window, pos, button, serial);
-                        return;
-                    }
+                    MouseAction::Zoom => {} // n/a for button clicks
                 }
             }
 
-            // 2. Mod + left-drag → pan canvas (anywhere)
-            if wm_mod && button == BTN_LEFT {
-                let grab = self.make_pan_grab(pos, button, false);
-                pointer.set_grab(self, grab, serial, Focus::Clear);
-                return;
-            }
-
-            // 3 & 4. Check what's under the pointer
+            // Hardcoded fallbacks: click-to-focus, empty-canvas-pan
             let element_under = self
                 .space
                 .element_under(pos)
                 .map(|(w, _)| w.clone());
 
             if let Some(window) = element_under {
-                // 4. Normal click on window: focus + raise + forward
+                // Normal click on window: focus + raise + forward
                 self.space.raise_element(&window, true);
                 keyboard.set_focus(
                     self,
                     Some(FocusTarget(window.toplevel().unwrap().wl_surface().clone())),
                     serial,
                 );
-            } else {
-                // 3. Left-click on empty canvas → pan (or click-to-unfocus)
-                if button == BTN_LEFT {
-                    let grab = self.make_pan_grab(pos, button, true);
-                    pointer.set_grab(self, grab, serial, Focus::Clear);
-                    return;
-                }
+            } else if button == config::BTN_LEFT {
+                // Left-click on empty canvas → pan
+                let grab = self.make_pan_grab(pos, button, true);
+                pointer.set_grab(self, grab, serial, Focus::Clear);
+                return;
             }
         }
 
@@ -642,16 +639,16 @@ impl DriftWm {
             return;
         }
 
-        // During fullscreen: Mod+scroll exits fullscreen and zooms;
+        // During fullscreen: bound scroll exits fullscreen and zooms;
         // plain scroll forwards to the app.
         if self.fullscreen.is_some() {
             let keyboard = self.seat.get_keyboard().unwrap();
             let mods = keyboard.modifier_state();
-            if self.config.mod_key.is_pressed(&mods) {
+            if matches!(self.config.mouse_scroll_lookup(&mods), Some(MouseAction::Zoom)) {
                 let pointer = self.seat.get_pointer().unwrap();
                 let pos = pointer.current_location();
                 self.exit_fullscreen_remap_pointer(pos);
-                // Fall through to Mod+scroll zoom logic below
+                // Fall through to zoom logic below
             } else {
                 let pointer = self.seat.get_pointer().unwrap();
                 let mut frame = AxisFrame::new(Event::time_msec(&event))
@@ -674,12 +671,11 @@ impl DriftWm {
 
         let keyboard = self.seat.get_keyboard().unwrap();
         let mods = keyboard.modifier_state();
-        let wm_mod = self.config.mod_key.is_pressed(&mods);
         let pointer = self.seat.get_pointer().unwrap();
         let pos = pointer.current_location();
 
-        // Mod+scroll → zoom (vertical axis), cursor-anchored, immediate (no animation)
-        if wm_mod {
+        // Configured scroll binding → zoom (vertical axis), cursor-anchored, immediate
+        if matches!(self.config.mouse_scroll_lookup(&mods), Some(MouseAction::Zoom)) {
             // Smooth scroll (trackpad) provides amount(); discrete scroll (mouse wheel)
             // provides amount_v120() where 120 = one notch. Fall back between them.
             let v = event.amount(Axis::Vertical)
