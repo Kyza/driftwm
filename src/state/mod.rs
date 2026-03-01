@@ -48,6 +48,7 @@ use smithay::utils::Transform;
 use smithay::backend::session::libseat::LibSeatSession;
 
 use smithay::reexports::calloop::RegistrationToken;
+use smithay::reexports::drm::control::crtc;
 
 use crate::backend::Backend;
 use crate::input::gestures::GestureState;
@@ -220,9 +221,12 @@ pub struct DriftWm {
     /// Commands to spawn after WAYLAND_DISPLAY is set.
     pub autostart: Vec<String>,
 
-    /// Damage flag — set when something changed and a new frame is needed.
-    /// Checked by the udev timer and VBlank handler to avoid no-op renders.
-    pub redraw_needed: bool,
+    /// Active DRM CRTCs (set by udev backend init/hotplug).
+    pub active_crtcs: HashSet<crtc::Handle>,
+    /// CRTCs that need a new frame rendered.
+    pub redraws_needed: HashSet<crtc::Handle>,
+    /// CRTCs with a frame queued to DRM, awaiting VBlank.
+    pub frames_pending: HashSet<crtc::Handle>,
 
     /// Config file mtime — for polling-based hot-reload.
     pub config_file_mtime: Option<std::time::SystemTime>,
@@ -352,7 +356,9 @@ impl DriftWm {
             state_file_zoom: f64::NAN,
             state_file_last_write: Instant::now(),
             autostart,
-            redraw_needed: true,
+            active_crtcs: HashSet::new(),
+            redraws_needed: HashSet::new(),
+            frames_pending: HashSet::new(),
             config_file_mtime: None,
         }
     }
@@ -377,6 +383,11 @@ impl DriftWm {
         for w in non_below.into_iter().rev() {
             self.space.raise_element(&w, false);
         }
+    }
+
+    /// Mark all active outputs as needing a redraw.
+    pub fn mark_all_dirty(&mut self) {
+        self.redraws_needed.extend(self.active_crtcs.iter());
     }
 
     /// True if any animation is still in progress and needs continued rendering.
@@ -584,7 +595,7 @@ impl DriftWm {
         }
 
         self.config = new_config;
-        self.redraw_needed = true;
+        self.mark_all_dirty();
         tracing::info!("Config reloaded");
     }
 

@@ -40,7 +40,10 @@ impl DriftWm {
     pub fn min_zoom(&self) -> f64 {
         let viewport = self.get_viewport_size();
         driftwm::canvas::dynamic_min_zoom(
-            self.space.elements().map(|w| {
+            self.space.elements().filter(|w| {
+                !driftwm::config::applied_rule(w.toplevel().unwrap().wl_surface())
+                    .is_some_and(|r| r.widget || r.no_focus)
+            }).map(|w| {
                 let loc = self.space.element_location(w).unwrap_or_default();
                 let size = w.geometry().size;
                 (loc, size)

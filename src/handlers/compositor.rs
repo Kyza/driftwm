@@ -52,7 +52,7 @@ impl CompositorHandler for DriftWm {
     }
 
     fn commit(&mut self, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
-        self.redraw_needed = true;
+        self.mark_all_dirty();
         // DMA-BUF readiness blocker: if a pending buffer is a dmabuf, add a
         // calloop source that waits for the GPU fence and then unblocks the
         // compositor transaction. Without this, GPU-rendered frames may commit

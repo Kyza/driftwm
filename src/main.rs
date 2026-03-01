@@ -45,13 +45,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Initialize backend BEFORE setting WAYLAND_DISPLAY.
-    match backend_name.as_str() {
-        "udev" => backend::udev::init_udev(&mut event_loop, &mut data)?,
+    let drm_device = match backend_name.as_str() {
+        "udev" => Some(backend::udev::init_udev(&mut event_loop, &mut data)?),
         _ => {
-            // winit needs to connect to the parent compositor first
             backend::winit::init_winit(&mut event_loop, &mut data)?;
+            None
         }
-    }
+    };
 
     // Register the Wayland display FD so calloop wakes on client messages
     let poll_fd = data.display.backend().poll_fd().try_clone_to_owned()?;
@@ -139,6 +139,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Run the event loop
     tracing::info!("Starting event loop — launch apps with: WAYLAND_DISPLAY={socket_name} <app>");
     event_loop.run(None, &mut data, |data| {
+        if let Some(ref device) = drm_device {
+            backend::udev::render_if_needed(device, data);
+        }
         data.state.space.refresh();
         data.state.popups.cleanup();
         log_err("dispatch_clients", data.display.dispatch_clients(&mut data.state));

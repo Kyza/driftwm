@@ -2,7 +2,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::time::Duration;
 
 use smithay::{
     backend::{
@@ -23,10 +22,7 @@ use smithay::{
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{
-        calloop::{
-            Dispatcher, EventLoop,
-            timer::{TimeoutAction, Timer},
-        },
+        calloop::{Dispatcher, EventLoop},
         drm::control::{self, connector, crtc},
         input::Libinput,
         rustix::fs::OFlags,
@@ -68,10 +64,26 @@ struct SurfaceData {
     output: Output,
 }
 
+/// Opaque handle to udev backend device data. Returned by init_udev,
+/// passed to render_if_needed. main.rs never sees internals.
+pub(crate) struct UdevDevice(Rc<RefCell<DeviceData>>);
+
+/// Render all outputs that need a frame and don't have one pending.
+pub(crate) fn render_if_needed(device: &UdevDevice, data: &mut CalloopData) {
+    let mut dev = device.0.borrow_mut();
+    for (&crtc, surface) in dev.surfaces.iter_mut() {
+        if data.state.redraws_needed.contains(&crtc)
+            && !data.state.frames_pending.contains(&crtc)
+        {
+            render_frame(data, &mut surface.compositor, &surface.output, crtc);
+        }
+    }
+}
+
 pub fn init_udev(
     event_loop: &mut EventLoop<'static, CalloopData>,
     data: &mut CalloopData,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<UdevDevice, Box<dyn std::error::Error>> {
     // 1. Create libseat session
     let (mut session, session_notifier) = LibSeatSession::new()
         .map_err(|e| format!("Failed to create session (are you running from a TTY?): {e}"))?;
@@ -308,8 +320,9 @@ pub fn init_udev(
                 if let Err(e) = surface.compositor.frame_submitted() {
                     tracing::warn!("frame_submitted error: {e:?}");
                 }
-                if data.state.redraw_needed {
-                    render_frame(data, &mut surface.compositor, &surface.output);
+                data.state.frames_pending.remove(&crtc);
+                if data.state.redraws_needed.contains(&crtc) {
+                    render_frame(data, &mut surface.compositor, &surface.output, crtc);
                 }
             }
             DrmEvent::Error(err) => {
@@ -337,16 +350,14 @@ pub fn init_udev(
                     tracing::error!("Failed to activate DRM: {e}");
                     return;
                 }
-                for surface in dev.surfaces.values_mut() {
-                    // reset_state on DrmCompositor (not the raw DrmSurface) so
-                    // reset_pending=true forces full damage on next render.
+                // VBlanks for pre-switch frames never arrive
+                data.state.frames_pending.clear();
+                for (&crtc, surface) in dev.surfaces.iter_mut() {
                     if let Err(e) = surface.compositor.reset_state() {
                         tracing::warn!("Failed to reset DRM surface state: {e}");
                     }
-                    // Clear stale "frame pending" state from before the VT switch —
-                    // the VBlank for the last queued frame was never delivered.
                     let _ = surface.compositor.frame_submitted();
-                    render_frame(data, &mut surface.compositor, &surface.output);
+                    render_frame(data, &mut surface.compositor, &surface.output, crtc);
                 }
             }
         }
@@ -389,8 +400,9 @@ pub fn init_udev(
                                     &mut data.state,
                                 ) {
                                     surfaces.insert(crtc, sd);
+                                    data.state.active_crtcs.insert(crtc);
                                     let surface = surfaces.get_mut(&crtc).unwrap();
-                                    render_frame(data, &mut surface.compositor, &surface.output);
+                                    render_frame(data, &mut surface.compositor, &surface.output, crtc);
                                 }
                             }
                             DrmScanEvent::Disconnected { crtc: Some(crtc), .. } => {
@@ -398,6 +410,9 @@ pub fn init_udev(
                                 if let Some(surface) = surfaces.remove(&crtc) {
                                     data.state.space.unmap_output(&surface.output);
                                 }
+                                data.state.active_crtcs.remove(&crtc);
+                                data.state.frames_pending.remove(&crtc);
+                                data.state.redraws_needed.remove(&crtc);
                             }
                             _ => {}
                         }
@@ -414,29 +429,16 @@ pub fn init_udev(
     });
     event_loop.handle().register_dispatcher(udev_dispatcher)?;
 
-    // 12. Render kickstart timer — checks for pending damage and restarts
-    // the VBlank chain when it has stopped (idle → new damage).
-    let device_for_timer = Rc::clone(&device);
-    let timer = Timer::from_duration(Duration::from_millis(16));
-    event_loop.handle().insert_source(timer, move |_, _, data: &mut CalloopData| {
-        if data.state.redraw_needed {
-            let mut dev = device_for_timer.borrow_mut();
-            for surface in dev.surfaces.values_mut() {
-                render_frame(data, &mut surface.compositor, &surface.output);
-            }
-        }
-        TimeoutAction::ToDuration(Duration::from_millis(16))
-    })?;
-
-    // 13. Queue initial render for all surfaces
+    // 12. Seed active_crtcs and queue initial render
     {
         let mut dev = device.borrow_mut();
-        for surface in dev.surfaces.values_mut() {
-            render_frame(data, &mut surface.compositor, &surface.output);
+        for (&crtc, surface) in dev.surfaces.iter_mut() {
+            data.state.active_crtcs.insert(crtc);
+            render_frame(data, &mut surface.compositor, &surface.output, crtc);
         }
     }
 
-    Ok(())
+    Ok(UdevDevice(device))
 }
 
 /// Quick check: does this DRM device have any connector in Connected state?
@@ -623,9 +625,9 @@ fn render_frame(
     data: &mut CalloopData,
     compositor: &mut GbmDrmCompositor,
     output: &Output,
+    crtc: crtc::Handle,
 ) {
-    // Clear the flag — re-set below if animations need more frames.
-    data.state.redraw_needed = false;
+    data.state.redraws_needed.remove(&crtc);
 
     let now = std::time::Instant::now();
     let dt = (now - data.state.last_frame_instant).min(std::time::Duration::from_millis(33));
@@ -641,7 +643,7 @@ fn render_frame(
 
     // Keep rendering while animations are in progress
     if data.state.has_active_animations() {
-        data.state.redraw_needed = true;
+        data.state.redraws_needed.insert(crtc);
     }
 
     // Dispatch Wayland clients
@@ -671,6 +673,8 @@ fn render_frame(
         Ok(_render_result) => {
             if let Err(e) = compositor.queue_frame(()) {
                 tracing::warn!("Failed to queue frame: {e:?}");
+            } else {
+                data.state.frames_pending.insert(crtc);
             }
         }
         Err(e) => {

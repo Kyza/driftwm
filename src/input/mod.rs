@@ -23,7 +23,7 @@ use crate::state::{DriftWm, FocusTarget};
 impl DriftWm {
     /// Process a single input event from any backend (winit, libinput, etc).
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
-        self.redraw_needed = true;
+        self.mark_all_dirty();
         match event {
             InputEvent::Keyboard { event } => self.on_keyboard::<I>(event),
             InputEvent::PointerMotion { event } => self.on_pointer_motion_relative::<I>(event),
