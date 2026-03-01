@@ -4,10 +4,11 @@
 import os
 import time
 
-from common import ICON, read_state_file
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
+
+from common import ICON, read_state_file
 
 WIDTH = 25
 console = Console(width=WIDTH, highlight=False)

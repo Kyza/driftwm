@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
-from common import get_weather, weather_icon
+from common import get_weather
 
 console = Console(width=22, highlight=False)
 
@@ -16,10 +16,14 @@ cached_weather: dict | None = None
 last_fetch: float = 0
 
 
+RETRY_INTERVAL = 30  # retry quickly when offline
+
+
 def fetch_if_stale() -> dict | None:
     global cached_weather, last_fetch  # noqa: PLW0603
     now = time.time()
-    if now - last_fetch > REFRESH_INTERVAL:
+    interval = REFRESH_INTERVAL if cached_weather is not None else RETRY_INTERVAL
+    if now - last_fetch > interval:
         last_fetch = now
         result = get_weather()
         if result is not None:

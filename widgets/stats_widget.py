@@ -5,6 +5,10 @@ import os
 import time
 from collections import deque
 
+from rich.console import Console
+from rich.live import Live
+from rich.text import Text
+
 from common import (
     ICON,
     battery_icon,
@@ -21,9 +25,6 @@ from common import (
     volume_icon,
     wifi_icon,
 )
-from rich.console import Console
-from rich.live import Live
-from rich.text import Text
 
 WIDTH = 36
 PAD = 15

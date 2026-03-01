@@ -5,10 +5,11 @@ import os
 import time
 from datetime import datetime
 
-from common import render_big_time
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
+
+from common import render_big_time
 
 WIDTH = 36
 console = Console(width=WIDTH, highlight=False)

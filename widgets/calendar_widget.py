@@ -6,10 +6,11 @@ import os
 import time
 from datetime import datetime
 
-from common import ICON
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
+
+from common import ICON
 
 console = Console(width=22, highlight=False)
 
