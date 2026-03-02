@@ -191,6 +191,10 @@ impl CompositorHandler for DriftWm {
                                 }
                             }
                         }
+
+                        if rule.as_ref().is_some_and(|r| r.position.is_some() && !r.widget && !r.no_focus) {
+                            self.navigate_to_window(&window, true);
+                        }
                     } else {
                         // Not ready yet, retry next commit
                         self.pending_center.insert(root.clone());

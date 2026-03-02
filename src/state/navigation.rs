@@ -7,8 +7,9 @@ use super::{DriftWm, FocusTarget};
 
 impl DriftWm {
     /// Navigate the viewport to center on a window: raise, focus, animate camera.
-    /// If returning from overview (ZoomToFit), also restores the saved zoom level.
-    pub fn navigate_to_window(&mut self, window: &Window) {
+    /// When `reset_zoom` is true, zoom animates to 1.0 (intentional navigation).
+    /// Otherwise preserves current zoom, or restores saved zoom if leaving overview.
+    pub fn navigate_to_window(&mut self, window: &Window, reset_zoom: bool) {
         self.space.raise_element(window, true);
         self.enforce_below_windows();
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
@@ -16,8 +17,10 @@ impl DriftWm {
         let surface = window.toplevel().unwrap().wl_surface().clone();
         keyboard.set_focus(self, Some(FocusTarget(surface)), serial);
 
-        // If in overview, restore saved zoom; otherwise keep current zoom
-        let target_zoom = if let Some((_, saved_zoom)) = self.overview_return.take() {
+        let target_zoom = if reset_zoom {
+            self.overview_return = None;
+            1.0
+        } else if let Some((_, saved_zoom)) = self.overview_return.take() {
             saved_zoom
         } else {
             self.zoom

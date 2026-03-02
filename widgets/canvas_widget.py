@@ -4,11 +4,10 @@
 import os
 import time
 
+from common import ICON, read_state_file
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
-
-from common import ICON, read_state_file
 
 WIDTH = 25
 console = Console(width=WIDTH, highlight=False)
@@ -24,9 +23,9 @@ def render() -> Text:
     text.append("\n" * top_pad)
 
     state = read_state_file()
-    x = state.get("saved_x", "—")
-    y = state.get("saved_y", "—")
-    zoom = state.get("saved_zoom", "—")
+    x = state.get("saved_x") or state.get("x", "—")
+    y = state.get("saved_y") or state.get("y", "—")
+    zoom = state.get("saved_zoom") or state.get("zoom", "—")
 
     text.append(f"   {ICON['pos']}  ", style="cyan")
     text.append(f"x: {x}  y: {y}\n")

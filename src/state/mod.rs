@@ -549,6 +549,31 @@ impl DriftWm {
             content += &format!("saved_x={sx:.0}\nsaved_y={sy:.0}\nsaved_zoom={saved_zoom:.3}\n");
         }
 
+        // Window list: app_id of each toplevel (focused window first)
+        let focused_surface = self.seat.get_keyboard().and_then(|kb| kb.current_focus());
+        let mut app_ids: Vec<String> = Vec::new();
+        for window in self.space.elements() {
+            let surface = window.toplevel().unwrap().wl_surface();
+            let app_id = smithay::wayland::compositor::with_states(surface, |states| {
+                states
+                    .data_map
+                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                    .and_then(|d| d.lock().ok())
+                    .and_then(|guard| guard.app_id.clone())
+            }).unwrap_or_default();
+            if !app_id.is_empty() {
+                let is_focused = focused_surface.as_ref().is_some_and(|f| &f.0 == surface);
+                if is_focused {
+                    app_ids.insert(0, app_id);
+                } else {
+                    app_ids.push(app_id);
+                }
+            }
+        }
+        if !app_ids.is_empty() {
+            content += &format!("windows={}\n", app_ids.join(","));
+        }
+
         if std::fs::write(&tmp, content).is_ok() {
             let _ = std::fs::rename(&tmp, &path);
         }

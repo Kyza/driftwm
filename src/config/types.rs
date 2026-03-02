@@ -44,6 +44,7 @@ pub enum Action {
     CenterNearest(Direction),
     CycleWindows { backward: bool },
     HomeToggle,
+    GoToPosition(f64, f64),
     ZoomIn,
     ZoomOut,
     ZoomReset,

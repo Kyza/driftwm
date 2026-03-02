@@ -111,6 +111,34 @@ pub(super) fn default_bindings(mod_key: ModKey, cycle_mod: CycleModifier) -> Has
         (
             KeyCombo {
                 modifiers: m.clone(),
+                sym: Keysym::from(keysyms::KEY_1),
+            },
+            Action::GoToPosition(-3000.0, 3000.0),
+        ),
+        (
+            KeyCombo {
+                modifiers: m.clone(),
+                sym: Keysym::from(keysyms::KEY_2),
+            },
+            Action::GoToPosition(3000.0, 3000.0),
+        ),
+        (
+            KeyCombo {
+                modifiers: m.clone(),
+                sym: Keysym::from(keysyms::KEY_3),
+            },
+            Action::GoToPosition(-3000.0, -3000.0),
+        ),
+        (
+            KeyCombo {
+                modifiers: m.clone(),
+                sym: Keysym::from(keysyms::KEY_4),
+            },
+            Action::GoToPosition(3000.0, -3000.0),
+        ),
+        (
+            KeyCombo {
+                modifiers: m.clone(),
                 sym: Keysym::from(keysyms::KEY_c),
             },
             Action::CenterWindow,
@@ -175,6 +203,13 @@ pub(super) fn default_bindings(mod_key: ModKey, cycle_mod: CycleModifier) -> Has
             KeyCombo {
                 modifiers: m.clone(),
                 sym: Keysym::from(keysyms::KEY_0),
+            },
+            Action::ZoomReset,
+        ),
+        (
+            KeyCombo {
+                modifiers: m.clone(),
+                sym: Keysym::from(keysyms::KEY_z),
             },
             Action::ZoomReset,
         ),

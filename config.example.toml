@@ -78,13 +78,14 @@
 #   close-window            — close the focused window
 #   nudge-window <dir>      — move focused window by nudge_step px
 #   pan-viewport <dir>      — pan camera by pan_step px
-#   center-window           — center viewport on focused window
+#   center-window           — center viewport on focused window + reset zoom
 #   center-nearest <dir>    — navigate to nearest window in direction
 #   cycle-windows forward   — Alt-Tab style window cycling
 #   cycle-windows backward  — reverse cycle
 #   home-toggle             — toggle between current position and origin
 #   zoom-in / zoom-out      — step zoom
 #   zoom-reset              — zoom to 1.0
+#   go-to <x> <y>           — jump camera to canvas position (Y-up)
 #   zoom-to-fit             — fit all windows in viewport
 #   toggle-fullscreen       — toggle focused window fullscreen
 #   reload-config           — hot-reload config file
@@ -118,7 +119,12 @@
 # "mod+equal" = "zoom-in"
 # "mod+minus" = "zoom-out"
 # "mod+0" = "zoom-reset"
+# "mod+z" = "zoom-reset"
 # "mod+w" = "zoom-to-fit"
+# "mod+1" = "go-to -3000 3000"     # top-left corner bookmark
+# "mod+2" = "go-to 3000 3000"      # top-right corner bookmark
+# "mod+3" = "go-to -3000 -3000"    # bottom-left corner bookmark
+# "mod+4" = "go-to 3000 -3000"     # bottom-right corner bookmark
 # "mod+ctrl+shift+q" = "quit"
 #
 # Media keys (default: wpctl/brightnessctl, no modifier needed)
@@ -154,6 +160,7 @@
 # "mod+scroll" = "zoom"
 
 # Window rules: match windows by app_id and apply behavioral overrides.
+# To find an app's app_id: cat $XDG_RUNTIME_DIR/driftwm/state (see "windows=" line)
 # Supports simple glob: "drift-*" matches any app_id starting with "drift-".
 #
 # Fields (all optional except app_id):

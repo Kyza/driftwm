@@ -95,7 +95,7 @@ impl DriftWm {
                         .find(|w| w.toplevel().unwrap().wl_surface() == &focus.0)
                         .cloned();
                     if let Some(window) = window {
-                        self.navigate_to_window(&window);
+                        self.navigate_to_window(&window, true);
                     }
                 } else {
                     // No focused window — find and focus the closest to viewport center
@@ -121,7 +121,7 @@ impl DriftWm {
                         })
                         .cloned();
                     if let Some(window) = closest {
-                        self.navigate_to_window(&window);
+                        self.navigate_to_window(&window, true);
                     }
                 }
             }
@@ -181,7 +181,7 @@ impl DriftWm {
                     skip.as_ref(),
                 );
                 if let Some(window) = nearest {
-                    self.navigate_to_window(&window);
+                    self.navigate_to_window(&window, false);
                 }
             }
             Action::CycleWindows { backward } => {
@@ -203,7 +203,7 @@ impl DriftWm {
 
                 let idx = self.cycle_state.unwrap();
                 if let Some(window) = self.focus_history.get(idx).cloned() {
-                    self.navigate_to_window(&window);
+                    self.navigate_to_window(&window, false);
                 }
             }
             Action::HomeToggle => {
@@ -231,6 +231,15 @@ impl DriftWm {
                     self.camera_target = Some(home);
                     self.zoom_target = Some(1.0);
                 }
+            }
+            Action::GoToPosition(x, y) => {
+                let viewport = self.get_viewport_size();
+                let target_camera = Point::from((
+                    x - viewport.w as f64 / (2.0 * self.zoom),
+                    -y - viewport.h as f64 / (2.0 * self.zoom),
+                ));
+                self.overview_return = None;
+                self.camera_target = Some(target_camera);
             }
             Action::ZoomIn => {
                 let new_zoom = (self.zoom * self.config.zoom_step).min(canvas::MAX_ZOOM);

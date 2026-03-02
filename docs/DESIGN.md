@@ -106,7 +106,7 @@ if the surface under the cursor changes mid-gesture).
 | 4       | scroll       | anywhere  | Center nearest window in direction |
 | 4       | pinch in     | anywhere  | Zoom-to-fit (overview)             |
 | 4       | pinch out    | anywhere  | Toggle home (0,0) ↔ previous       |
-| 4       | hold (tap)   | anywhere  | Center focused window              |
+| 4       | hold (tap)   | anywhere  | Center focused window + reset zoom |
 
 **3-finger double-tap-drag**: Tap with three fingers on a window (libinput
 generates BTN_MIDDLE via tap-to-click), then immediately start a 3-finger
@@ -128,7 +128,7 @@ Pinch-out triggers home toggle (snap to origin or return to previous position).
 Thresholds: scale < 0.8 for pinch-in, scale > 1.2 for pinch-out.
 
 **4-finger hold (tap)**: Place four fingers on the trackpad and lift without
-swiping or pinching. Centers the currently focused window in the viewport.
+swiping or pinching. Centers the currently focused window and resets zoom to 1.0.
 Requires a brief hold (~150ms) because libinput's gesture recognizer needs time
 to classify the touch — tap-to-click only handles up to 3 fingers.
 
@@ -167,7 +167,7 @@ Minimal set. Defaults below, all configurable via `[keybinds]` table (maps key c
 | `Alt-Tab`           | Cycle windows forward (raise+center)   |
 | `Alt-Shift-Tab`     | Cycle windows backward                 |
 | `Super+Q`           | Close focused window                   |
-| `Super+C`           | Center focused window in viewport      |
+| `Super+C`           | Center focused window + reset zoom     |
 | `Super+F`           | Toggle fullscreen                      |
 | `Super+Shift+Arrow` | Nudge focused window 20px in direction |
 
@@ -178,6 +178,7 @@ Minimal set. Defaults below, all configurable via `[keybinds]` table (maps key c
 | `Super+Arrow` | Center nearest window in direction |
 | `Super+A`     | Toggle home (0, 0) ↔ previous pos  |
 | `Super+W`     | Zoom-to-fit — show all windows     |
+| `Super+1-4`   | Go to canvas corner bookmark       |
 
 ### Viewport
 

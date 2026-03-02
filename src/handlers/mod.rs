@@ -275,7 +275,7 @@ impl ForeignToplevelHandler for DriftWm {
             .find(|w| w.toplevel().unwrap().wl_surface() == &wl_surface)
             .cloned();
         if let Some(window) = window {
-            self.navigate_to_window(&window);
+            self.navigate_to_window(&window, true);
         }
     }
 
