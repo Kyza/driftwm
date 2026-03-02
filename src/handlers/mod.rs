@@ -12,7 +12,7 @@ use smithay::{
     delegate_xdg_activation,
     input::{
         Seat, SeatHandler, SeatState,
-        pointer::{CursorImageStatus, PointerHandle},
+        pointer::{CursorIcon, CursorImageStatus, PointerHandle},
     },
     reexports::wayland_server::{
         Resource,
@@ -57,6 +57,14 @@ impl SeatHandler for DriftWm {
         // During a compositor grab (pan, resize), we control the cursor.
         // Ignore client updates so they don't stomp our grab cursor.
         if self.grab_cursor {
+            return;
+        }
+        // During exec loading, replace default cursor with Progress but let
+        // client surface cursors through (they take priority).
+        if self.exec_cursor_deadline.is_some()
+            && matches!(&image, CursorImageStatus::Named(icon) if *icon == CursorIcon::Default)
+        {
+            self.cursor_status = CursorImageStatus::Named(CursorIcon::Wait);
             return;
         }
         self.cursor_status = image;

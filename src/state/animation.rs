@@ -1,5 +1,6 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use smithay::input::pointer::CursorImageStatus;
 use smithay::utils::{Logical, Point};
 
 use driftwm::canvas::{self, CanvasPos};
@@ -160,6 +161,16 @@ impl DriftWm {
         let delta = self.camera - old_camera;
         let pos = self.seat.get_pointer().unwrap().current_location();
         self.warp_pointer(pos + delta);
+    }
+
+    /// Clear the loading cursor if the exec timeout has elapsed.
+    pub fn check_exec_cursor_timeout(&mut self) {
+        if let Some(deadline) = self.exec_cursor_deadline
+            && Instant::now() >= deadline
+        {
+            self.exec_cursor_deadline = None;
+            self.cursor_status = CursorImageStatus::default_named();
+        }
     }
 
     /// Advance zoom animation toward `zoom_target` using frame-rate independent lerp.

@@ -195,6 +195,12 @@ impl CompositorHandler for DriftWm {
                         if rule.as_ref().is_some_and(|r| r.position.is_some() && !r.widget && !r.no_focus) {
                             self.navigate_to_window(&window, true);
                         }
+
+                        // New window arrived — clear loading cursor
+                        if self.exec_cursor_deadline.take().is_some() {
+                            self.cursor_status =
+                                smithay::input::pointer::CursorImageStatus::default_named();
+                        }
                     } else {
                         // Not ready yet, retry next commit
                         self.pending_center.insert(root.clone());

@@ -213,7 +213,27 @@ pub fn build_cursor_elements(
         return vec![];
     }
     let key = if loaded { name } else { "default" };
-    let (buffer, hotspot) = state.cursor_buffers.get(key).unwrap();
+    let cursor_frames = state.cursor_buffers.get(key).unwrap();
+
+    // Select the active frame
+    let frame_idx = if cursor_frames.total_duration_ms == 0 {
+        0
+    } else {
+        let elapsed = state.start_time.elapsed().as_millis() as u32
+            % cursor_frames.total_duration_ms;
+        let mut acc = 0u32;
+        let mut idx = 0;
+        for (i, &(_, _, delay)) in cursor_frames.frames.iter().enumerate() {
+            acc += delay;
+            if elapsed < acc {
+                idx = i;
+                break;
+            }
+        }
+        idx
+    };
+
+    let (buffer, hotspot, _) = &cursor_frames.frames[frame_idx];
     let hotspot = *hotspot;
 
     let pos = physical_pos - Point::from((hotspot.x as f64, hotspot.y as f64));

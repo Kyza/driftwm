@@ -148,6 +148,9 @@ pub fn init_winit(
             // --- Zoom animation ---
             data.state.apply_zoom_animation(dt);
 
+            // --- Exec loading cursor timeout ---
+            data.state.check_exec_cursor_timeout();
+
             // --- Update cached background element ---
             let (camera_moved, zoom_changed) =
                 crate::render::update_background_element(&mut data.state, &output);

@@ -1,5 +1,5 @@
 use smithay::{
-    input::pointer::MotionEvent,
+    input::pointer::{CursorIcon, CursorImageStatus, MotionEvent},
     utils::{Point, SERIAL_COUNTER},
 };
 
@@ -19,6 +19,10 @@ impl DriftWm {
             Action::Exec(cmd) => {
                 tracing::info!("Spawning: {cmd}");
                 crate::state::spawn_command(cmd);
+                self.cursor_status = CursorImageStatus::Named(CursorIcon::Wait);
+                self.exec_cursor_deadline = Some(
+                    std::time::Instant::now() + std::time::Duration::from_secs(5),
+                );
             }
             Action::CloseWindow => {
                 let keyboard = self.seat.get_keyboard().unwrap();

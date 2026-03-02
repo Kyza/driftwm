@@ -1,6 +1,7 @@
 use smithay::{
     delegate_layer_shell,
     desktop::{self, PopupKind, layer_map_for_output},
+    input::pointer::CursorImageStatus,
     reexports::wayland_server::{Resource, protocol::wl_output::WlOutput},
     utils::SERIAL_COUNTER,
     wayland::{
@@ -36,6 +37,11 @@ impl WlrLayerShellHandler for DriftWm {
         namespace: String,
     ) {
         tracing::info!("New layer surface: {namespace}");
+
+        // New surface arrived — clear loading cursor
+        if self.exec_cursor_deadline.take().is_some() {
+            self.cursor_status = CursorImageStatus::default_named();
+        }
 
         // Clear any stale destroyed marker — the wl_surface may be reused
         // (e.g. swayosd destroys and recreates layer surfaces on the same wl_surface)

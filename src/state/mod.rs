@@ -55,6 +55,14 @@ use crate::input::gestures::GestureState;
 use driftwm::canvas::MomentumState;
 use driftwm::config::Config;
 
+/// All animation frames for a loaded xcursor, at a single nominal size.
+pub struct CursorFrames {
+    /// (buffer, hotspot, delay_ms) per frame.
+    pub frames: Vec<(MemoryRenderBuffer, Point<i32, Logical>, u32)>,
+    /// Sum of all frame delays. 0 = static cursor (single frame or all delays zero).
+    pub total_duration_ms: u32,
+}
+
 /// A layer surface placed at a fixed canvas position (instead of screen-anchored via LayerMap).
 /// Created when a layer surface's namespace matches a window rule with `position`.
 pub struct CanvasLayer {
@@ -170,7 +178,7 @@ pub struct DriftWm {
     /// True while a compositor grab (pan/resize) owns the cursor icon.
     /// Blocks client cursor updates in `cursor_image()`.
     pub grab_cursor: bool,
-    pub cursor_buffers: HashMap<String, (MemoryRenderBuffer, Point<i32, Logical>)>,
+    pub cursor_buffers: HashMap<String, CursorFrames>,
 
     // Backend (moved here so protocol handlers can access the renderer)
     pub backend: Option<Backend>,
@@ -267,6 +275,9 @@ pub struct DriftWm {
     pub redraws_needed: HashSet<crtc::Handle>,
     /// CRTCs with a frame queued to DRM, awaiting VBlank.
     pub frames_pending: HashSet<crtc::Handle>,
+
+    /// Deadline for loading cursor (shown after Exec until new window commits or timeout).
+    pub exec_cursor_deadline: Option<Instant>,
 
     /// Config file mtime — for polling-based hot-reload.
     pub config_file_mtime: Option<std::time::SystemTime>,
@@ -406,6 +417,7 @@ impl DriftWm {
             active_crtcs: HashSet::new(),
             redraws_needed: HashSet::new(),
             frames_pending: HashSet::new(),
+            exec_cursor_deadline: None,
             config_file_mtime: None,
         }
     }
@@ -441,6 +453,17 @@ impl DriftWm {
         self.redraws_needed.extend(self.active_crtcs.iter());
     }
 
+    /// True if the current cursor is an animated xcursor (multiple frames with delays).
+    pub fn cursor_is_animated(&self) -> bool {
+        let name = match &self.cursor_status {
+            CursorImageStatus::Named(icon) => icon.name(),
+            _ => return false,
+        };
+        self.cursor_buffers
+            .get(name)
+            .is_some_and(|cf| cf.total_duration_ms > 0)
+    }
+
     /// True if any animation is still in progress and needs continued rendering.
     pub fn has_active_animations(&self) -> bool {
         self.camera_target.is_some()
@@ -448,6 +471,8 @@ impl DriftWm {
             || self.edge_pan_velocity.is_some()
             || self.held_action.is_some()
             || (self.momentum.velocity.x != 0.0 || self.momentum.velocity.y != 0.0)
+            || self.exec_cursor_deadline.is_some()
+            || self.cursor_is_animated()
     }
 
     /// Forward a buffered middle-click press+release to the client.
@@ -678,12 +703,9 @@ impl DriftWm {
         tracing::info!("Config reloaded");
     }
 
-    /// Load an xcursor image by name and cache the resulting MemoryRenderBuffer.
-    /// Returns a reference to the cached (buffer, hotspot) pair.
-    pub fn load_xcursor(
-        &mut self,
-        name: &str,
-    ) -> Option<&(MemoryRenderBuffer, Point<i32, Logical>)> {
+    /// Load all xcursor animation frames by name and cache them.
+    /// Returns a reference to the cached `CursorFrames`.
+    pub fn load_xcursor(&mut self, name: &str) -> Option<&CursorFrames> {
         if !self.cursor_buffers.contains_key(name) {
             let theme_name = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| "default".into());
             let theme = xcursor::CursorTheme::load(&theme_name);
@@ -691,26 +713,47 @@ impl DriftWm {
             let data = std::fs::read(path).ok()?;
             let images = xcursor::parser::parse_xcursor(&data)?;
 
-            // Pick the image closest to 24px (standard cursor size)
             let target_size = std::env::var("XCURSOR_SIZE")
                 .ok()
                 .and_then(|s| s.parse::<u32>().ok())
                 .unwrap_or(24);
-            let image = images
-                .iter()
-                .min_by_key(|img| (img.size as i32 - target_size as i32).unsigned_abs())?;
 
-            let buffer = MemoryRenderBuffer::from_slice(
-                &image.pixels_rgba,
-                Fourcc::Abgr8888,
-                (image.width as i32, image.height as i32),
-                1,
-                Transform::Normal,
-                None,
-            );
-            let hotspot = Point::from((image.xhot as i32, image.yhot as i32));
+            // Find the nominal size closest to target
+            let best_size = images
+                .iter()
+                .map(|img| img.size)
+                .min_by_key(|&s| (s as i32 - target_size as i32).unsigned_abs())?;
+
+            // Collect all frames at that size
+            let mut frames = Vec::new();
+            let mut total_delay: u32 = 0;
+            for img in &images {
+                if img.size != best_size {
+                    continue;
+                }
+                let buffer = MemoryRenderBuffer::from_slice(
+                    &img.pixels_rgba,
+                    Fourcc::Abgr8888,
+                    (img.width as i32, img.height as i32),
+                    1,
+                    Transform::Normal,
+                    None,
+                );
+                let hotspot = Point::from((img.xhot as i32, img.yhot as i32));
+                frames.push((buffer, hotspot, img.delay));
+                total_delay = total_delay.saturating_add(img.delay);
+            }
+
+            if frames.is_empty() {
+                return None;
+            }
+
+            // Single frame or all delays zero → static cursor
+            let total_duration_ms =
+                if frames.len() == 1 || total_delay == 0 { 0 } else { total_delay };
+
             self.cursor_buffers
-                .insert(name.to_string(), (buffer, hotspot));
+                .insert(name.to_string(), CursorFrames { frames, total_duration_ms });
         }
         self.cursor_buffers.get(name)
     }
