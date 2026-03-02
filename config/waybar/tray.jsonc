@@ -1,0 +1,12 @@
+{
+    "layer": "top",
+    "position": "bottom",
+    "width": 287,
+    "height": 28,
+    "modules-center": ["tray"],
+
+    "tray": {
+        "icon-size": 16,
+        "spacing": 4
+    }
+}

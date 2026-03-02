@@ -14,7 +14,11 @@
 #     "swayosd-server --top-margin 0.95",
 #     "blueman-applet",
 #     "swaync",
+#     "waybar -c ~/path/to/driftwm/config/waybar/taskbar.jsonc -s ~/path/to/driftwm/config/waybar/taskbar.css",
+#     "waybar -c ~/path/to/driftwm/config/waybar/tray.jsonc -s ~/path/to/driftwm/config/waybar/tray.css",
+#     "vorta -d",
 #     "~/path/to/driftwm/widgets/launch.sh",
+#     "~/path/to/driftwm/widgets/battery_notify.sh",
 # ]
 
 [input.keyboard]
@@ -86,7 +90,7 @@
 # Directions: up, down, left, right, up-left, up-right, down-left, down-right
 
 [keybindings]
-# "mod+return" = "exec foot"
+# "mod+return" = "exec ptyxis -s"
 # "mod+d" = "exec fuzzel"
 # "mod+n" = "exec swaync-client -t"
 # "mod+q" = "close-window"
@@ -158,52 +162,65 @@
 # Dashboard widgets — Alacritty terminals launched by widgets/launch.sh.
 # Each widget gets a unique app_id for positioning. Positions are canvas
 # coordinates centered around origin (visible at home view on 1920x1080).
+# Waybar configs are in config/waybar/.
 
 # [[window_rules]]
 # app_id = "drift-clock"
-# position = [-120, 185]
+# position = [-93, 205]
 # widget = true
 # no_focus = true
 # decoration = "none"
 #
 # [[window_rules]]
 # app_id = "drift-stats"
-# position = [-120, -20]
+# position = [-93, 0]
 # widget = true
-# no_focus = true
+# no_focus = false
 # decoration = "none"
 #
 # [[window_rules]]
 # app_id = "drift-canvas"
-# position = [-155, -205]
+# position = [-129, -185]
 # widget = true
 # no_focus = true
 # decoration = "none"
 #
 # [[window_rules]]
 # app_id = "drift-layout"
-# position = [16, -205]
+# position = [42, -185]
 # widget = true
 # no_focus = true
 # decoration = "none"
 #
 # [[window_rules]]
 # app_id = "drift-calendar"
-# position = [160, -20]
+# position = [186, 0]
 # widget = true
 # no_focus = true
 # decoration = "none"
 #
 # [[window_rules]]
 # app_id = "drift-weather"
-# position = [160, 185]
+# position = [186, 205]
 # widget = true
 # no_focus = true
 # decoration = "none"
 #
 # [[window_rules]]
 # app_id = "drift-notif"
-# position = [164, -205]
+# position = [190, -185]
 # widget = true
-# no_focus = true
+# no_focus = false
+# decoration = "none"
+#
+# [[window_rules]]
+# app_id = "waybar"
+# position = [-289, 21]
+# widget = true
+# decoration = "none"
+#
+# [[window_rules]]
+# app_id = "waybar"
+# position = [150, -260]
+# widget = true
 # decoration = "none"
