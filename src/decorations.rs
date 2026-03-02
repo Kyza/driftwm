@@ -1,5 +1,6 @@
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
+use smithay::backend::renderer::gles::element::PixelShaderElement;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::{Logical, Point, Rectangle, Size, Transform};
 
@@ -11,6 +12,10 @@ pub struct WindowDecoration {
     pub width: i32,
     pub focused: bool,
     pub close_hovered: bool,
+    /// Cached shadow shader element (stable Id for damage tracking). Rebuilt on resize.
+    pub cached_shadow: Option<PixelShaderElement>,
+    /// Window content size the cached shadow was built for.
+    pub shadow_content_size: (i32, i32),
 }
 
 /// What the pointer is over in SSD decoration space.
@@ -29,6 +34,8 @@ impl WindowDecoration {
             width,
             focused,
             close_hovered: false,
+            cached_shadow: None,
+            shadow_content_size: (0, 0),
         }
     }
 

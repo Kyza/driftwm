@@ -467,9 +467,8 @@ pub fn compose_frame(
                 ))
             }));
 
-            // Shadow element: positioned behind the window + title bar.
-            // Position is baked into the area rectangle (like windows/title bars)
-            // so RescaleRenderElement scales from origin (0,0).
+            // Shadow element: cached per-window, rebuilt only on resize.
+            // Stable Id lets the damage tracker skip unchanged shadow regions.
             if let Some(ref shader) = state.shadow_shader {
                 use driftwm::config::DecorationConfig;
                 let radius = DecorationConfig::SHADOW_RADIUS;
@@ -479,37 +478,60 @@ pub fn compose_frame(
                 let shadow_loc = render_loc + Point::from((-r, -bar_height - r));
                 let shadow_area = Rectangle::new(shadow_loc, (shadow_w, shadow_h).into());
 
-                let sc = DecorationConfig::SHADOW_COLOR;
-                let shadow_elem = PixelShaderElement::new(
-                    shader.clone(),
-                    shadow_area,
-                    None, // not opaque
-                    1.0,
-                    vec![
-                        Uniform::new("u_window_rect", (
-                            r as f32,
-                            r as f32,
-                            geom_size.w as f32,
-                            (geom_size.h + bar_height) as f32,
-                        )),
-                        Uniform::new("u_radius", radius),
-                        Uniform::new("u_color", (
-                            sc[0] as f32 / 255.0,
-                            sc[1] as f32 / 255.0,
-                            sc[2] as f32 / 255.0,
-                            sc[3] as f32 / 255.0,
-                        )),
-                        Uniform::new("u_corner_radius", DecorationConfig::CORNER_RADIUS as f32),
-                    ],
-                    Kind::Unspecified,
-                );
-                target.push(OutputRenderElements::Background(
-                    RescaleRenderElement::from_element(
-                        shadow_elem,
-                        Point::<i32, Physical>::from((0, 0)),
-                        state.zoom,
-                    ),
-                ));
+                if let Some(deco) = state.decorations.get_mut(&wl_surface.id()) {
+                    let content_size = (geom_size.w, geom_size.h);
+                    let shadow_elem = if let Some(shadow) = &mut deco.cached_shadow {
+                        if deco.shadow_content_size != content_size {
+                            deco.shadow_content_size = content_size;
+                            let sc = DecorationConfig::SHADOW_COLOR;
+                            shadow.update_uniforms(vec![
+                                Uniform::new("u_window_rect", (
+                                    r as f32, r as f32,
+                                    geom_size.w as f32, (geom_size.h + bar_height) as f32,
+                                )),
+                                Uniform::new("u_radius", radius),
+                                Uniform::new("u_color", (
+                                    sc[0] as f32 / 255.0, sc[1] as f32 / 255.0,
+                                    sc[2] as f32 / 255.0, sc[3] as f32 / 255.0,
+                                )),
+                                Uniform::new("u_corner_radius", DecorationConfig::CORNER_RADIUS as f32),
+                            ]);
+                        }
+                        shadow.resize(shadow_area, None);
+                        shadow.clone()
+                    } else {
+                        deco.shadow_content_size = content_size;
+                        let sc = DecorationConfig::SHADOW_COLOR;
+                        let elem = PixelShaderElement::new(
+                            shader.clone(),
+                            shadow_area,
+                            None,
+                            1.0,
+                            vec![
+                                Uniform::new("u_window_rect", (
+                                    r as f32, r as f32,
+                                    geom_size.w as f32, (geom_size.h + bar_height) as f32,
+                                )),
+                                Uniform::new("u_radius", radius),
+                                Uniform::new("u_color", (
+                                    sc[0] as f32 / 255.0, sc[1] as f32 / 255.0,
+                                    sc[2] as f32 / 255.0, sc[3] as f32 / 255.0,
+                                )),
+                                Uniform::new("u_corner_radius", DecorationConfig::CORNER_RADIUS as f32),
+                            ],
+                            Kind::Unspecified,
+                        );
+                        deco.cached_shadow = Some(elem.clone());
+                        elem
+                    };
+                    target.push(OutputRenderElements::Background(
+                        RescaleRenderElement::from_element(
+                            shadow_elem,
+                            Point::<i32, Physical>::from((0, 0)),
+                            state.zoom,
+                        ),
+                    ));
+                }
             }
         } else {
             target.extend(elems.into_iter().map(|elem| {
