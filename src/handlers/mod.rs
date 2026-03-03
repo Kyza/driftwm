@@ -8,7 +8,8 @@ use smithay::{
     delegate_cursor_shape, delegate_data_control, delegate_data_device, delegate_dmabuf,
     delegate_fractional_scale, delegate_idle_inhibit, delegate_keyboard_shortcuts_inhibit,
     delegate_output, delegate_pointer_constraints, delegate_presentation,
-    delegate_primary_selection, delegate_relative_pointer, delegate_seat, delegate_viewporter,
+    delegate_pointer_gestures, delegate_primary_selection, delegate_relative_pointer,
+    delegate_seat, delegate_viewporter,
     delegate_xdg_activation,
     input::{
         Seat, SeatHandler, SeatState,
@@ -155,18 +156,10 @@ impl XdgActivationHandler for DriftWm {
         token_data: XdgActivationTokenData,
         surface: WlSurface,
     ) {
-        // Only honor if the requesting surface currently has keyboard focus.
-        // This allows legitimate cross-app activation (e.g. swaync clicking a
-        // notification from a focused panel) but blocks background apps from
-        // stealing focus.
-        let dominated = token_data.surface.as_ref().is_some_and(|requester| {
-            self.seat
-                .get_keyboard()
-                .unwrap()
-                .current_focus()
-                .is_some_and(|focus| &focus.0 == requester)
-        });
-        if !dominated {
+        // Only honor tokens created from user input (has a serial).
+        // Tokens without a serial are spontaneous attention requests from
+        // background apps — ignore those to prevent focus stealing.
+        if token_data.serial.is_none() {
             return;
         }
         if driftwm::config::applied_rule(&surface).is_some_and(|r| r.no_focus) {
@@ -233,6 +226,7 @@ impl PointerConstraintsHandler for DriftWm {
 delegate_pointer_constraints!(DriftWm);
 
 delegate_relative_pointer!(DriftWm);
+delegate_pointer_gestures!(DriftWm);
 
 impl KeyboardShortcutsInhibitHandler for DriftWm {
     fn keyboard_shortcuts_inhibit_state(
