@@ -28,6 +28,10 @@ impl DriftWm {
                 self.exec_cursor_deadline =
                     Some(now + std::time::Duration::from_secs(5));
             }
+            Action::Spawn(cmd) => {
+                tracing::info!("Spawning (no cursor): {cmd}");
+                crate::state::spawn_command(cmd);
+            }
             Action::CloseWindow => {
                 let keyboard = self.seat.get_keyboard().unwrap();
                 if let Some(focus) = keyboard.current_focus() {

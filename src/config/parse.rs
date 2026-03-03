@@ -78,6 +78,10 @@ pub fn parse_action(s: &str) -> Result<Action, String> {
             let cmd = arg.ok_or("exec requires a command argument")?;
             Ok(Action::Exec(cmd.to_string()))
         }
+        "spawn" => {
+            let cmd = arg.ok_or("spawn requires a command argument")?;
+            Ok(Action::Spawn(cmd.to_string()))
+        }
         "close-window" => Ok(Action::CloseWindow),
         "nudge-window" => {
             let dir = parse_direction(arg.ok_or("nudge-window requires a direction")?)?;

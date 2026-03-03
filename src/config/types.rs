@@ -37,6 +37,7 @@ impl Direction {
 #[derive(Clone, Debug)]
 pub enum Action {
     Exec(String),
+    Spawn(String),
     CloseWindow,
     NudgeWindow(Direction),
     PanViewport(Direction),

@@ -31,14 +31,13 @@ shader_path = "~/.config/driftwm/pink_cloud.glsl"
 [keybindings]
 "mod+return" = "exec ptyxis -s"
 "mod+d" = "exec fuzzel"
-"mod+n" = "exec swaync-client -t"
-"mod+l" = "exec swaylock -f -c 000000 -kl"
+"mod+n" = "spawn swaync-client -t"
 # swayosd instead of default wpctl/brightnessctl
-"XF86AudioRaiseVolume" = "exec swayosd-client --output-volume raise"
-"XF86AudioLowerVolume" = "exec swayosd-client --output-volume lower"
-"XF86AudioMute" = "exec swayosd-client --output-volume mute-toggle"
-"XF86MonBrightnessUp" = "exec swayosd-client --brightness raise"
-"XF86MonBrightnessDown" = "exec swayosd-client --brightness lower"
+"XF86AudioRaiseVolume" = "spawn swayosd-client --output-volume raise"
+"XF86AudioLowerVolume" = "spawn swayosd-client --output-volume lower"
+"XF86AudioMute" = "spawn swayosd-client --output-volume mute-toggle"
+"XF86MonBrightnessUp" = "spawn swayosd-client --brightness raise"
+"XF86MonBrightnessDown" = "spawn swayosd-client --brightness lower"
 
 # Dashboard widgets — positioned around origin for home view (1920x1080)
 

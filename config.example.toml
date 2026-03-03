@@ -72,7 +72,8 @@
 # Keysyms are XKB names (case-insensitive): return, tab, up, a, equal, etc.
 #
 # Actions:
-#   exec <cmd>              — spawn a command via sh -c (shell syntax supported)
+#   exec <cmd>              — launch an app (shows loading cursor until window appears)
+#   spawn <cmd>             — run a command without loading cursor (toggles, OSD, screenshots)
 #   close-window            — close the focused window
 #   nudge-window <dir>      — move focused window by nudge_step px
 #   pan-viewport <dir>      — pan camera by pan_step px
@@ -122,14 +123,14 @@
 # "mod+2" = "go-to -3000 3000"
 # "mod+3" = "go-to 3000 3000"
 # "mod+4" = "go-to 3000 -3000"
-# "mod+l" = "exec swaylock"
+# "mod+l" = "exec swaylock -f -c 000000 -kl"
 # "mod+ctrl+shift+q" = "quit"
-# "XF86AudioRaiseVolume" = "exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"
-# "XF86AudioLowerVolume" = "exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"
-# "XF86AudioMute" = "exec wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
-# "XF86MonBrightnessUp" = "exec brightnessctl set +5%"
-# "XF86MonBrightnessDown" = "exec brightnessctl set 5%-"
-# "Print" = "exec grim - | wl-copy"
+# "XF86AudioRaiseVolume" = "spawn wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"
+# "XF86AudioLowerVolume" = "spawn wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"
+# "XF86AudioMute" = "spawn wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
+# "XF86MonBrightnessUp" = "spawn brightnessctl set +5%"
+# "XF86MonBrightnessDown" = "spawn brightnessctl set 5%-"
+# "Print" = "spawn grim - | wl-copy"
 
 # Mouse bindings: "Modifier+...+Trigger" = "action"
 # Only modifier-based bindings — canvas fundamentals are hardcoded:
