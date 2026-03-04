@@ -243,6 +243,7 @@ pub fn find_nearest<W: PartialEq>(
 /// Scroll momentum physics: velocity decays by friction each frame.
 /// Uses EMA (exponential moving average) for accumulation to smooth
 /// out jittery trackpad deltas.
+#[derive(Copy, Clone)]
 pub struct MomentumState {
     pub velocity: Point<f64, Logical>,
     pub friction: f64,

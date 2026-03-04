@@ -236,6 +236,7 @@ impl DriftWm {
     pub fn on_gesture_swipe_update<I: InputBackend>(&mut self, event: I::GestureSwipeUpdateEvent) {
         let delta = event.delta();
         let time = Event::time_msec(&event);
+        let zoom = self.zoom();
 
         let Some(ref mut state) = self.gesture_state else {
             self.forward_swipe_update(delta, time);
@@ -245,7 +246,7 @@ impl DriftWm {
         match state {
             GestureState::SwipePan => {
                 let canvas_delta: Point<f64, Logical> =
-                    (-delta.x / self.zoom, -delta.y / self.zoom).into();
+                    (-delta.x / zoom, -delta.y / zoom).into();
                 self.drift_pan(canvas_delta);
 
                 let pointer = self.seat.get_pointer().unwrap();
@@ -256,7 +257,7 @@ impl DriftWm {
                 let pointer = self.seat.get_pointer().unwrap();
                 let cursor_pos = pointer.current_location();
                 let canvas_delta: Point<f64, Logical> =
-                    (delta.x / self.zoom, delta.y / self.zoom).into();
+                    (delta.x / zoom, delta.y / zoom).into();
                 self.warp_pointer(cursor_pos + canvas_delta);
             }
             GestureState::SwipeResize {
@@ -267,7 +268,7 @@ impl DriftWm {
                 cumulative,
                 ..
             } => {
-                *cumulative += Point::from((delta.x / self.zoom, delta.y / self.zoom));
+                *cumulative += Point::from((delta.x / zoom, delta.y / zoom));
 
                 let mut new_w = initial_size.w;
                 let mut new_h = initial_size.h;
@@ -407,7 +408,7 @@ impl DriftWm {
         {
             self.cancel_animations();
             self.gesture_state = Some(GestureState::PinchZoom {
-                initial_zoom: self.zoom,
+                initial_zoom: self.zoom(),
             });
             return;
         }
@@ -456,14 +457,15 @@ impl DriftWm {
             GestureState::PinchZoom { initial_zoom } => {
                 let new_zoom = (*initial_zoom * scale).clamp(self.min_zoom(), canvas::MAX_ZOOM);
 
-                if new_zoom != self.zoom {
+                let cur_zoom = self.zoom();
+                if new_zoom != cur_zoom {
                     let pointer = self.seat.get_pointer().unwrap();
                     let pos = pointer.current_location();
-                    let screen_pos = canvas_to_screen(CanvasPos(pos), self.camera, self.zoom).0;
+                    let screen_pos = canvas_to_screen(CanvasPos(pos), self.camera(), cur_zoom).0;
 
-                    self.overview_return = None;
-                    self.camera = canvas::zoom_anchor_camera(pos, screen_pos, new_zoom);
-                    self.zoom = new_zoom;
+                    self.set_overview_return(None);
+                    self.set_camera(canvas::zoom_anchor_camera(pos, screen_pos, new_zoom));
+                    self.set_zoom(new_zoom);
                     self.update_output_from_camera();
 
                     self.warp_pointer(pos);
@@ -503,13 +505,14 @@ impl DriftWm {
 
         match state {
             GestureState::PinchZoom { .. } => {
-                let snapped = canvas::snap_zoom(self.zoom);
-                if snapped != self.zoom {
+                let cur_zoom = self.zoom();
+                let snapped = canvas::snap_zoom(cur_zoom);
+                if snapped != cur_zoom {
                     let pointer = self.seat.get_pointer().unwrap();
                     let pos = pointer.current_location();
-                    let screen_pos = canvas_to_screen(CanvasPos(pos), self.camera, self.zoom).0;
-                    self.camera = canvas::zoom_anchor_camera(pos, screen_pos, snapped);
-                    self.zoom = snapped;
+                    let screen_pos = canvas_to_screen(CanvasPos(pos), self.camera(), cur_zoom).0;
+                    self.set_camera(canvas::zoom_anchor_camera(pos, screen_pos, snapped));
+                    self.set_zoom(snapped);
                     self.update_output_from_camera();
                     self.warp_pointer(pos);
                 }
@@ -709,10 +712,12 @@ impl DriftWm {
     }
 
     fn cancel_animations(&mut self) {
-        self.camera_target = None;
-        self.zoom_target = None;
-        self.zoom_animation_center = None;
-        self.momentum.stop();
+        self.with_output_state(|os| {
+            os.camera_target = None;
+            os.zoom_target = None;
+            os.zoom_animation_center = None;
+            os.momentum.stop();
+        });
     }
 
     // ── Client forwarding ──────────────────────────────────────────────

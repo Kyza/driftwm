@@ -42,8 +42,9 @@ impl XdgShellHandler for DriftWm {
             .next()
             .and_then(|o| self.space.output_geometry(o))
             .map(|geo| {
-                ((self.camera.x + geo.size.w as f64 / (2.0 * self.zoom)) as i32,
-                 (self.camera.y + geo.size.h as f64 / (2.0 * self.zoom)) as i32)
+                { let cam = self.camera(); let z = self.zoom();
+                ((cam.x + geo.size.w as f64 / (2.0 * z)) as i32,
+                 (cam.y + geo.size.h as f64 / (2.0 * z)) as i32) }
             })
             .unwrap_or((0, 0));
 
@@ -168,8 +169,8 @@ impl XdgShellHandler for DriftWm {
             // If the destroyed window was fullscreen, restore viewport
             if self.fullscreen.as_ref().is_some_and(|fs| &fs.window == window) {
                 let fs = self.fullscreen.take().unwrap();
-                self.camera = fs.saved_camera;
-                self.zoom = fs.saved_zoom;
+                self.set_camera(fs.saved_camera);
+                self.set_zoom(fs.saved_zoom);
                 self.update_output_from_camera();
             }
             // Remove from focus history before unmapping
@@ -350,9 +351,9 @@ impl DriftWm {
             // Constrain to the visible canvas area (accounts for zoom)
             let viewport_size = output_geo.size;
             let mut target = driftwm::canvas::visible_canvas_rect(
-                self.camera.to_i32_round(),
+                self.camera().to_i32_round(),
                 viewport_size,
-                self.zoom,
+                self.zoom(),
             );
             // Translate to layer-surface-relative coordinates
             target.loc -= pos;

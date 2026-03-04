@@ -84,7 +84,7 @@ impl PointerGrab<DriftWm> for MoveSurfaceGrab {
         let (final_x, final_y) = if !data.config.snap_enabled {
             (natural_x, natural_y)
         } else {
-            let zoom = data.zoom;
+            let zoom = data.zoom();
             let effective_distance = data.config.snap_distance / zoom;
             let effective_break = data.config.snap_break_force / zoom;
             let gap = data.config.snap_gap;
@@ -167,21 +167,21 @@ impl PointerGrab<DriftWm> for MoveSurfaceGrab {
 
         // Edge auto-pan detection
         // single-output assumption: edge detection uses first output size
-        let screen_pos = canvas_to_screen(CanvasPos(event.location), data.camera, data.zoom).0;
+        let screen_pos = canvas_to_screen(CanvasPos(event.location), data.camera(), data.zoom()).0;
         let output_size = data.space.outputs().next()
             .and_then(|o| o.current_mode())
             .map(|m| m.size.to_logical(1));
 
         if let Some(size) = output_size {
             let cfg = &data.config;
-            data.edge_pan_velocity = Self::edge_pan_velocity(
+            data.set_edge_pan_velocity(Self::edge_pan_velocity(
                 screen_pos,
                 size.w as f64,
                 size.h as f64,
                 cfg.edge_zone,
                 cfg.edge_pan_min,
                 cfg.edge_pan_max,
-            );
+            ));
         }
     }
 
@@ -193,13 +193,13 @@ impl PointerGrab<DriftWm> for MoveSurfaceGrab {
     ) {
         handle.button(data, event);
         if handle.current_pressed().is_empty() {
-            data.edge_pan_velocity = None;
+            data.set_edge_pan_velocity(None);
             handle.unset_grab(self, data, event.serial, event.time, true);
         }
     }
 
     fn unset(&mut self, data: &mut DriftWm) {
-        data.edge_pan_velocity = None;
+        data.set_edge_pan_velocity(None);
     }
 
     crate::grabs::forward_pointer_grab_methods!();

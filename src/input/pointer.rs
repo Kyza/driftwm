@@ -56,8 +56,8 @@ impl DriftWm {
         }
 
         if button_state == ButtonState::Pressed {
-            self.last_scroll_pan = None;
-            self.momentum.stop();
+            self.set_last_scroll_pan(None);
+            self.with_output_state(|os| os.momentum.stop());
 
             // A 3-finger tap (LRM button map) generates BTN_MIDDLE.
             // Buffer it — if a 3-finger swipe follows within 300ms, suppress
@@ -247,14 +247,14 @@ impl DriftWm {
                         // No window or pinned — fall through
                     }
                     MouseAction::PanViewport => {
-                        self.panning = true;
+                        self.set_panning(true);
                         let from_empty = context == BindingContext::OnCanvas;
                         let grab = self.make_pan_grab(pos, button, from_empty);
                         pointer.set_grab(self, grab, serial, Focus::Clear);
                         return;
                     }
                     MouseAction::CenterNearest => {
-                        let screen_pos = canvas_to_screen(CanvasPos(pos), self.camera, self.zoom).0;
+                        let screen_pos = canvas_to_screen(CanvasPos(pos), self.camera(), self.zoom()).0;
                         let start_data = GrabStartData {
                             focus: None,
                             button,
@@ -419,8 +419,8 @@ impl DriftWm {
         // Compute context — recent_pan stickiness forces OnCanvas to prevent
         // jitter when a window slides under the pointer during a pan gesture.
         let recent_pan = self
-            .last_scroll_pan
-            .is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(150));
+            .last_scroll_pan()
+            .is_some_and(|t: std::time::Instant| t.elapsed() < std::time::Duration::from_millis(150));
         let context = if recent_pan {
             BindingContext::OnCanvas
         } else {
@@ -432,15 +432,15 @@ impl DriftWm {
             match action {
                 MouseAction::PanViewport => {
                     if source == AxisSource::Finger {
-                        self.last_scroll_pan = Some(std::time::Instant::now());
+                        self.set_last_scroll_pan(Some(std::time::Instant::now()));
                     }
                     let h = event.amount(Axis::Horizontal).unwrap_or(0.0);
                     let v = event.amount(Axis::Vertical).unwrap_or(0.0);
                     if h != 0.0 || v != 0.0 {
                         let s = self.config.scroll_speed;
                         let canvas_delta: Point<f64, smithay::utils::Logical> = Point::from((
-                            h * s / self.zoom,
-                            v * s / self.zoom,
+                            h * s / self.zoom(),
+                            v * s / self.zoom(),
                         ));
                         self.drift_pan(canvas_delta);
                         let new_pos = pos + canvas_delta;
@@ -464,19 +464,23 @@ impl DriftWm {
                     if v != 0.0 {
                         let steps = -v * self.config.scroll_speed / 30.0;
                         let factor = self.config.zoom_step.powf(steps);
-                        let new_zoom = (self.zoom * factor).clamp(self.min_zoom(), canvas::MAX_ZOOM);
+                        let cur_zoom = self.zoom();
+                        let new_zoom = (cur_zoom * factor).clamp(self.min_zoom(), canvas::MAX_ZOOM);
 
-                        if new_zoom != self.zoom {
-                            self.overview_return = None;
+                        if new_zoom != cur_zoom {
                             let screen_pos = canvas_to_screen(
-                                CanvasPos(pos), self.camera, self.zoom,
+                                CanvasPos(pos), self.camera(), cur_zoom,
                             ).0;
-                            self.camera = canvas::zoom_anchor_camera(pos, screen_pos, new_zoom);
-                            self.zoom = new_zoom;
-                            self.zoom_target = None;
-                            self.zoom_animation_center = None;
-                            self.camera_target = None;
-                            self.momentum.stop();
+                            let new_camera = canvas::zoom_anchor_camera(pos, screen_pos, new_zoom);
+                            self.with_output_state(|os| {
+                                os.camera = new_camera;
+                                os.zoom = new_zoom;
+                                os.zoom_target = None;
+                                os.zoom_animation_center = None;
+                                os.camera_target = None;
+                                os.overview_return = None;
+                                os.momentum.stop();
+                            });
                             self.update_output_from_camera();
 
                             let under = self.surface_under(pos);
@@ -514,7 +518,7 @@ impl DriftWm {
         button: u32,
         from_empty_canvas: bool,
     ) -> PanGrab {
-        let screen_pos = canvas_to_screen(CanvasPos(canvas_pos), self.camera, self.zoom).0;
+        let screen_pos = canvas_to_screen(CanvasPos(canvas_pos), self.camera(), self.zoom()).0;
         PanGrab {
             start_data: GrabStartData {
                 focus: None,

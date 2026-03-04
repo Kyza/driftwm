@@ -19,12 +19,16 @@ impl DriftWm {
         keyboard.set_focus(self, Some(FocusTarget(surface)), serial);
 
         let target_zoom = if reset_zoom {
-            self.overview_return = None;
+            self.set_overview_return(None);
             1.0
-        } else if let Some((_, saved_zoom)) = self.overview_return.take() {
-            saved_zoom
         } else {
-            self.zoom
+            let overview_ret = self.overview_return();
+            self.set_overview_return(None);
+            if let Some((_, saved_zoom)) = overview_ret {
+                saved_zoom
+            } else {
+                self.zoom()
+            }
         };
 
         let window_loc = self.space.element_location(window).unwrap_or_default();
@@ -38,10 +42,12 @@ impl DriftWm {
             window_loc.x as f64 + window_size.w as f64 / 2.0,
             window_loc.y as f64 + window_size.h as f64 / 2.0,
         ));
-        self.momentum.stop();
-        self.zoom_animation_center = Some(window_center);
-        self.camera_target = Some(target);
-        self.zoom_target = Some(target_zoom);
+        self.with_output_state(|os| {
+            os.momentum.stop();
+            os.zoom_animation_center = Some(window_center);
+            os.camera_target = Some(target);
+            os.zoom_target = Some(target_zoom);
+        });
     }
 
     /// Dynamic minimum zoom based on the current window layout.

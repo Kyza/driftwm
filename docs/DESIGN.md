@@ -70,17 +70,21 @@ screen_h = h * z
 
 ## Multi-monitor
 
-Multiple monitors = multiple viewports on the same canvas. Each monitor has its
-own `(cx, cy)` and `z`. They can look at different parts of the canvas or
-overlap. Panning on one monitor moves only that monitor's viewport.
+Multiple monitors = multiple independent viewports on the same canvas. Each
+monitor has its own camera `(cx, cy)` and zoom `z`. Panning/zooming on one
+monitor affects only that monitor's viewport. See
+[docs/multi-monitor.md](multi-monitor.md) for the full design: per-output state,
+pointer crossing, edge-zone boundaries, window dragging between monitors, output
+configuration, and the `zwlr-output-management` protocol.
 
 ```
-Monitor 0: viewport at (0, 0)       Monitor 1: viewport at (3000, 500)
-┌──────────────┐                    ┌──────────────┐
-│  [terminal]  │                    │   [browser]  │
-│        [vim] │                    │              │
-└──────────────┘                    └──────────────┘
-         ← same infinite canvas →
+Monitor A: viewport at (0, 0) z=1.0    Monitor B: viewport at (3000, 500) z=0.5
+┌──────────────┐                        ┌──────────────┐
+│  [terminal]  │                        │ [terminal]   │
+│        [vim] │                        │   [vim]      │
+└──────────────┘                        │   [browser]  │
+                                        └──────────────┘
+              ← same infinite canvas →
 ```
 
 ## Input

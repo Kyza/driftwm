@@ -34,7 +34,7 @@ use smithay_drm_extras::drm_scanner::{DrmScanEvent, DrmScanner};
 
 use crate::render::OutputRenderElements;
 use crate::backend::Backend;
-use crate::state::{CalloopData, DriftWm, log_err};
+use crate::state::{CalloopData, DriftWm, init_output_state, log_err};
 
 const SUPPORTED_COLOR_FORMATS: &[Fourcc] = &[
     Fourcc::Xrgb8888,
@@ -609,16 +609,21 @@ fn create_surface(
     };
 
     // single-output assumption: sets initial camera from first output only
-    if state.space.outputs().next().is_none() {
+    let camera = if state.space.outputs().next().is_none() {
         let logical_size = output_mode.size.to_logical(1);
-        state.camera = smithay::utils::Point::from((
+        smithay::utils::Point::from((
             -(logical_size.w as f64) / 2.0,
             -(logical_size.h as f64) / 2.0,
-        ));
-    }
+        ))
+    } else {
+        state.camera()
+    };
+
+    init_output_state(&output, camera, state.config.friction);
+
     state
         .space
-        .map_output(&output, state.camera.to_i32_round());
+        .map_output(&output, camera.to_i32_round());
 
     Some(SurfaceData { compositor, output })
 }
@@ -633,9 +638,9 @@ fn render_frame(
     data.state.redraws_needed.remove(&crtc);
 
     let now = std::time::Instant::now();
-    let dt = (now - data.state.last_frame_instant).min(std::time::Duration::from_millis(33));
-    data.state.last_frame_instant = now;
-    data.state.frame_counter = data.state.frame_counter.wrapping_add(1);
+    let dt = (now - data.state.last_frame_instant()).min(std::time::Duration::from_millis(33));
+    data.state.set_last_frame_instant(now);
+    data.state.set_frame_counter(data.state.frame_counter().wrapping_add(1));
 
     // Animations
     data.state.apply_key_repeat();
@@ -694,8 +699,8 @@ fn render_frame(
     data.state.backend = Some(backend);
 
     // Record camera+zoom for next-frame change detection
-    data.state.last_rendered_camera = data.state.camera;
-    data.state.last_rendered_zoom = data.state.zoom;
+    data.state.set_last_rendered_camera(data.state.camera());
+    data.state.set_last_rendered_zoom(data.state.zoom());
     data.state.write_state_file_if_dirty();
 
     // Post-render

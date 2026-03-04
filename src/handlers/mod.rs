@@ -175,9 +175,9 @@ impl XdgActivationHandler for DriftWm {
                 driftwm::canvas::visible_fraction(
                     loc,
                     window.geometry().size,
-                    self.camera,
+                    self.camera(),
                     self.get_viewport_size(),
-                    self.zoom,
+                    self.zoom(),
                 ) >= 0.5
             });
             if mostly_visible {
@@ -398,14 +398,16 @@ impl SessionLockHandler for DriftWm {
 
         // Kill all transient input/animation state so nothing fires during lock
         self.gesture_state = None;
-        self.momentum.stop();
+        self.with_output_state(|os| {
+            os.momentum.stop();
+            os.edge_pan_velocity = None;
+            os.panning = false;
+            os.camera_target = None;
+            os.zoom_target = None;
+            os.zoom_animation_center = None;
+        });
         self.held_action = None;
-        self.edge_pan_velocity = None;
-        self.panning = false;
         self.grab_cursor = false;
-        self.camera_target = None;
-        self.zoom_target = None;
-        self.zoom_animation_center = None;
         if let Some(pending) = self.pending_middle_click.take() {
             self.loop_handle.remove(pending.timer_token);
         }

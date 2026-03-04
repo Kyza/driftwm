@@ -108,9 +108,9 @@ pub fn build_tile_background_elements(
         return vec![];
     }
 
-    let cam_x = state.camera.x;
-    let cam_y = state.camera.y;
-    let zoom = state.zoom;
+    let cam_x = state.camera().x;
+    let cam_y = state.camera().y;
+    let zoom = state.zoom();
 
     // Visible canvas area: viewport / zoom
     let visible_w = output_size.w as f64 / zoom;
@@ -163,7 +163,7 @@ pub fn build_canvas_layer_elements(
     output: &Output,
 ) -> Vec<OutputRenderElements> {
     let output_scale = output.current_scale().fractional_scale();
-    let camera = state.camera.to_i32_round();
+    let camera = state.camera().to_i32_round();
     let mut elements = Vec::new();
 
     for cl in &state.canvas_layers {
@@ -184,7 +184,7 @@ pub fn build_canvas_layer_elements(
             OutputRenderElements::Window(RescaleRenderElement::from_element(
                 elem,
                 Point::<i32, Physical>::from((0, 0)),
-                state.zoom,
+                state.zoom(),
             ))
         }));
     }
@@ -240,7 +240,7 @@ pub fn build_cursor_elements(
     let pointer = state.seat.get_pointer().unwrap();
     let canvas_pos = pointer.current_location();
     // Custom elements are in screen-local physical coords
-    let screen_pos = canvas_to_screen(CanvasPos(canvas_pos), state.camera, state.zoom).0;
+    let screen_pos = canvas_to_screen(CanvasPos(canvas_pos), state.camera(), state.zoom()).0;
     let physical_pos: Point<f64, Physical> = (screen_pos.x, screen_pos.y).into();
 
     // Extract cursor name before borrowing state mutably for load_xcursor
@@ -298,22 +298,24 @@ pub fn update_background_element(
     state: &mut crate::state::DriftWm,
     output: &Output,
 ) -> (bool, bool) {
-    let camera_moved = state.camera != state.last_rendered_camera;
-    let zoom_changed = state.zoom != state.last_rendered_zoom;
+    let cur_camera = state.camera();
+    let cur_zoom = state.zoom();
+    let camera_moved = cur_camera != state.last_rendered_camera();
+    let zoom_changed = cur_zoom != state.last_rendered_zoom();
     if let Some(ref mut elem) = state.cached_bg_element {
         let scale = output.current_scale().integer_scale();
         let output_size = output
             .current_mode()
             .map(|m| m.size.to_logical(scale))
             .unwrap_or((1, 1).into());
-        let canvas_w = (output_size.w as f64 / state.zoom).ceil() as i32;
-        let canvas_h = (output_size.h as f64 / state.zoom).ceil() as i32;
+        let canvas_w = (output_size.w as f64 / cur_zoom).ceil() as i32;
+        let canvas_h = (output_size.h as f64 / cur_zoom).ceil() as i32;
         let canvas_area = Rectangle::from_size((canvas_w, canvas_h).into());
         elem.resize(canvas_area, Some(vec![canvas_area]));
         if camera_moved || zoom_changed {
             elem.update_uniforms(vec![Uniform::new(
                 "u_camera",
-                (state.camera.x as f32, state.camera.y as f32),
+                (cur_camera.x as f32, cur_camera.y as f32),
             )]);
         }
     }
@@ -375,10 +377,11 @@ pub fn compose_frame(
         .current_mode()
         .map(|m| m.size.to_logical(1))
         .unwrap_or((1, 1).into());
+    let zoom = state.zoom();
     let visible_rect = canvas::visible_canvas_rect(
-        state.camera.to_i32_round(),
+        state.camera().to_i32_round(),
         viewport_size,
-        state.zoom,
+        zoom,
     );
     let output_scale = output.current_scale().fractional_scale();
     let scale = Scale::from(output_scale);
@@ -455,7 +458,7 @@ pub fn compose_frame(
                         RescaleRenderElement::from_element(
                             bar_elem,
                             Point::<i32, Physical>::from((0, 0)),
-                            state.zoom,
+                            zoom,
                         ),
                     ));
                 }
@@ -466,7 +469,7 @@ pub fn compose_frame(
                 OutputRenderElements::Window(RescaleRenderElement::from_element(
                     elem,
                     Point::<i32, Physical>::from((0, 0)),
-                    state.zoom,
+                    zoom,
                 ))
             }));
 
@@ -531,7 +534,7 @@ pub fn compose_frame(
                         RescaleRenderElement::from_element(
                             shadow_elem,
                             Point::<i32, Physical>::from((0, 0)),
-                            state.zoom,
+                            zoom,
                         ),
                     ));
                 }
@@ -541,7 +544,7 @@ pub fn compose_frame(
                 OutputRenderElements::Window(RescaleRenderElement::from_element(
                     elem,
                     Point::<i32, Physical>::from((0, 0)),
-                    state.zoom,
+                    zoom,
                 ))
             }));
         }
@@ -555,7 +558,7 @@ pub fn compose_frame(
                 RescaleRenderElement::from_element(
                     elem.clone(),
                     Point::<i32, Physical>::from((0, 0)),
-                    state.zoom,
+                    zoom,
                 ),
             )]
         } else if state.background_tile.is_some() {

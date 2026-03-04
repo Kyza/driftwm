@@ -5,6 +5,7 @@ mod navigation;
 use smithay::{
     desktop::{PopupManager, Space, Window},
     input::{Seat, SeatState, keyboard::XkbConfig, pointer::CursorImageStatus},
+    output::Output,
     reexports::{
         calloop::{LoopHandle, LoopSignal},
         wayland_protocols::xdg::shell::server::xdg_toplevel,
@@ -25,6 +26,7 @@ use smithay::{
     },
 };
 use std::collections::{HashMap, HashSet};
+use std::sync::{Mutex, MutexGuard};
 use std::time::Instant;
 
 use smithay::backend::allocator::Fourcc;
@@ -143,6 +145,67 @@ pub struct FullscreenState {
     pub saved_zoom: f64,
 }
 
+/// Per-output viewport state, stored on each `Output` via `UserDataMap`.
+/// Wrapped in `Mutex` since `UserDataMap` requires `Sync`.
+/// Fields that are !Send (PixelShaderElement) stay on DriftWm.
+/// Fields with non-Copy ownership types (fullscreen, lock_surface)
+/// stay on DriftWm for Phase 1 — moved here when multi-output needs them.
+#[derive(Clone)]
+pub struct OutputState {
+    pub camera: Point<f64, Logical>,
+    pub zoom: f64,
+    pub zoom_target: Option<f64>,
+    pub zoom_animation_center: Option<Point<f64, Logical>>,
+    pub last_rendered_zoom: f64,
+    pub overview_return: Option<(Point<f64, Logical>, f64)>,
+    pub camera_target: Option<Point<f64, Logical>>,
+    pub last_scroll_pan: Option<Instant>,
+    pub momentum: MomentumState,
+    pub frame_counter: u64,
+    pub panning: bool,
+    pub edge_pan_velocity: Option<Point<f64, Logical>>,
+    pub last_rendered_camera: Point<f64, Logical>,
+    pub last_frame_instant: Instant,
+}
+
+/// Initialize per-output state on a newly created output.
+pub fn init_output_state(output: &Output, camera: Point<f64, Logical>, friction: f64) {
+    if output.user_data().get::<Mutex<OutputState>>().is_some() {
+        tracing::warn!("OutputState already initialized for output, skipping");
+        return;
+    }
+    output
+        .user_data()
+        .insert_if_missing_threadsafe(|| {
+            Mutex::new(OutputState {
+                camera,
+                zoom: 1.0,
+                zoom_target: None,
+                zoom_animation_center: None,
+                last_rendered_zoom: f64::NAN,
+                overview_return: None,
+                camera_target: None,
+                last_scroll_pan: None,
+                momentum: MomentumState::new(friction),
+                frame_counter: 0,
+                panning: false,
+                edge_pan_velocity: None,
+                last_rendered_camera: Point::from((f64::NAN, f64::NAN)),
+                last_frame_instant: Instant::now(),
+            })
+        });
+}
+
+/// Get a lock on an output's per-output state.
+pub fn output_state(output: &Output) -> MutexGuard<'_, OutputState> {
+    output
+        .user_data()
+        .get::<Mutex<OutputState>>()
+        .expect("OutputState not initialized on output")
+        .lock()
+        .expect("OutputState mutex poisoned")
+}
+
 /// Central compositor state.
 pub struct DriftWm {
     // -- global: infrastructure --
@@ -167,22 +230,6 @@ pub struct DriftWm {
     // -- global: input --
     pub seat: Seat<DriftWm>,
 
-    // -- per-output: viewport / camera / zoom --
-    pub camera: Point<f64, Logical>,
-    pub zoom: f64,
-    pub zoom_target: Option<f64>,
-    pub zoom_animation_center: Option<Point<f64, Logical>>,
-    pub last_rendered_zoom: f64,
-    pub overview_return: Option<(Point<f64, Logical>, f64)>,
-    // -- per-output: scroll/momentum --
-    pub last_scroll_pan: Option<Instant>,
-    pub momentum: MomentumState,
-    // -- per-output: frame timing --
-    pub frame_counter: u64,
-    // -- per-output: pan state --
-    pub panning: bool,
-    pub edge_pan_velocity: Option<Point<f64, Logical>>,
-
     // -- global: cursor --
     pub cursor_status: CursorImageStatus,
     /// True while a compositor grab (pan/resize) owns the cursor icon.
@@ -199,10 +246,8 @@ pub struct DriftWm {
     // -- global: shaders (compiled once, shared across outputs) --
     pub shadow_shader: Option<GlesPixelProgram>,
     pub background_shader: Option<GlesPixelProgram>,
-    // -- per-output: cached render elements --
+    // -- per-output: cached render elements (!Send, stays on DriftWm) --
     pub cached_bg_element: Option<PixelShaderElement>,
-    // -- per-output: last-rendered state for damage detection --
-    pub last_rendered_camera: Point<f64, Logical>,
     // -- global: background tile (loaded once, shared) --
     pub background_tile: Option<(MemoryRenderBuffer, i32, i32)>,
 
@@ -249,10 +294,6 @@ pub struct DriftWm {
     // -- global: window management --
     pub pending_center: HashSet<WlSurface>,
 
-    // -- per-output: camera animation --
-    pub camera_target: Option<Point<f64, Logical>>,
-    // -- per-output: frame timing --
-    pub last_frame_instant: Instant,
     // -- global: focus/navigation --
     pub focus_history: Vec<Window>,
     pub cycle_state: Option<usize>,
@@ -372,17 +413,6 @@ impl DriftWm {
             seat_state,
             data_device_state,
             seat,
-            camera: Point::from((0.0, 0.0)),
-            zoom: 1.0,
-            zoom_target: None,
-            zoom_animation_center: None,
-            last_rendered_zoom: f64::NAN,
-            overview_return: None,
-            last_scroll_pan: None,
-            momentum: MomentumState::new(config.friction),
-            frame_counter: 0,
-            panning: false,
-            edge_pan_velocity: None,
             cursor_status: CursorImageStatus::default_named(),
             grab_cursor: false,
             decoration_cursor: false,
@@ -393,7 +423,6 @@ impl DriftWm {
             shadow_shader: None,
             background_shader: None,
             cached_bg_element: None,
-            last_rendered_camera: Point::from((f64::NAN, f64::NAN)),
             background_tile: None,
             dmabuf_state: DmabufState::new(),
             dmabuf_global: None,
@@ -420,8 +449,6 @@ impl DriftWm {
             canvas_layers: Vec::new(),
             config,
             pending_center: HashSet::new(),
-            camera_target: None,
-            last_frame_instant: Instant::now(),
             focus_history: Vec::new(),
             cycle_state: None,
             home_return: None,
@@ -489,11 +516,16 @@ impl DriftWm {
 
     /// True if any animation is still in progress and needs continued rendering.
     pub fn has_active_animations(&self) -> bool {
-        self.camera_target.is_some()
-            || self.zoom_target.is_some()
-            || self.edge_pan_velocity.is_some()
+        let per_output = self.active_output().is_some_and(|output| {
+            let os = output_state(&output);
+            os.camera_target.is_some()
+                || os.zoom_target.is_some()
+                || os.edge_pan_velocity.is_some()
+                || os.momentum.velocity.x != 0.0
+                || os.momentum.velocity.y != 0.0
+        });
+        per_output
             || self.held_action.is_some()
-            || (self.momentum.velocity.x != 0.0 || self.momentum.velocity.y != 0.0)
             || self.exec_cursor_show_at.is_some()
             || self.exec_cursor_deadline.is_some()
             || self.cursor_is_animated()
@@ -536,13 +568,106 @@ impl DriftWm {
         self.flush_middle_click(pending.press_time, pending.release_time);
     }
 
-    /// Sync each output's position to the current camera, so render_output
+    /// The output the pointer is currently on. For Phase 1 (single monitor),
+    /// returns the first (only) output.
+    pub fn active_output(&self) -> Option<Output> {
+        self.space.outputs().next().cloned()
+    }
+
+    /// Batch-access per-output state under a single mutex lock.
+    pub fn with_output_state<R>(&mut self, f: impl FnOnce(&mut OutputState) -> R) -> R {
+        let output = self.active_output().unwrap();
+        let mut guard = output_state(&output);
+        f(&mut guard)
+    }
+
+    // -- Per-output field accessors (delegate to active output's OutputState) --
+
+    pub fn camera(&self) -> Point<f64, Logical> {
+        output_state(&self.active_output().unwrap()).camera
+    }
+    pub fn set_camera(&mut self, val: Point<f64, Logical>) {
+        output_state(&self.active_output().unwrap()).camera = val;
+    }
+    pub fn zoom(&self) -> f64 {
+        output_state(&self.active_output().unwrap()).zoom
+    }
+    pub fn set_zoom(&mut self, val: f64) {
+        output_state(&self.active_output().unwrap()).zoom = val;
+    }
+    pub fn zoom_target(&self) -> Option<f64> {
+        output_state(&self.active_output().unwrap()).zoom_target
+    }
+    pub fn set_zoom_target(&mut self, val: Option<f64>) {
+        output_state(&self.active_output().unwrap()).zoom_target = val;
+    }
+    pub fn zoom_animation_center(&self) -> Option<Point<f64, Logical>> {
+        output_state(&self.active_output().unwrap()).zoom_animation_center
+    }
+    pub fn set_zoom_animation_center(&mut self, val: Option<Point<f64, Logical>>) {
+        output_state(&self.active_output().unwrap()).zoom_animation_center = val;
+    }
+    pub fn last_rendered_zoom(&self) -> f64 {
+        output_state(&self.active_output().unwrap()).last_rendered_zoom
+    }
+    pub fn set_last_rendered_zoom(&mut self, val: f64) {
+        output_state(&self.active_output().unwrap()).last_rendered_zoom = val;
+    }
+    pub fn overview_return(&self) -> Option<(Point<f64, Logical>, f64)> {
+        output_state(&self.active_output().unwrap()).overview_return
+    }
+    pub fn set_overview_return(&mut self, val: Option<(Point<f64, Logical>, f64)>) {
+        output_state(&self.active_output().unwrap()).overview_return = val;
+    }
+    pub fn camera_target(&self) -> Option<Point<f64, Logical>> {
+        output_state(&self.active_output().unwrap()).camera_target
+    }
+    pub fn set_camera_target(&mut self, val: Option<Point<f64, Logical>>) {
+        output_state(&self.active_output().unwrap()).camera_target = val;
+    }
+    pub fn last_scroll_pan(&self) -> Option<Instant> {
+        output_state(&self.active_output().unwrap()).last_scroll_pan
+    }
+    pub fn set_last_scroll_pan(&mut self, val: Option<Instant>) {
+        output_state(&self.active_output().unwrap()).last_scroll_pan = val;
+    }
+    pub fn frame_counter(&self) -> u64 {
+        output_state(&self.active_output().unwrap()).frame_counter
+    }
+    pub fn set_frame_counter(&mut self, val: u64) {
+        output_state(&self.active_output().unwrap()).frame_counter = val;
+    }
+    pub fn panning(&self) -> bool {
+        output_state(&self.active_output().unwrap()).panning
+    }
+    pub fn set_panning(&mut self, val: bool) {
+        output_state(&self.active_output().unwrap()).panning = val;
+    }
+    pub fn edge_pan_velocity(&self) -> Option<Point<f64, Logical>> {
+        output_state(&self.active_output().unwrap()).edge_pan_velocity
+    }
+    pub fn set_edge_pan_velocity(&mut self, val: Option<Point<f64, Logical>>) {
+        output_state(&self.active_output().unwrap()).edge_pan_velocity = val;
+    }
+    pub fn last_rendered_camera(&self) -> Point<f64, Logical> {
+        output_state(&self.active_output().unwrap()).last_rendered_camera
+    }
+    pub fn set_last_rendered_camera(&mut self, val: Point<f64, Logical>) {
+        output_state(&self.active_output().unwrap()).last_rendered_camera = val;
+    }
+    pub fn last_frame_instant(&self) -> Instant {
+        output_state(&self.active_output().unwrap()).last_frame_instant
+    }
+    pub fn set_last_frame_instant(&mut self, val: Instant) {
+        output_state(&self.active_output().unwrap()).last_frame_instant = val;
+    }
+
+    /// Sync each output's position to its camera, so render_output
     /// automatically applies the canvas→screen transform.
-    /// single-output assumption: applies the same global camera to all outputs.
     pub fn update_output_from_camera(&mut self) {
-        let camera_i32 = self.camera.to_i32_round();
         for output in self.space.outputs().cloned().collect::<Vec<_>>() {
-            self.space.map_output(&output, camera_i32);
+            let cam = output_state(&output).camera.to_i32_round();
+            self.space.map_output(&output, cam);
         }
     }
 
@@ -560,8 +685,8 @@ impl DriftWm {
     /// Write viewport center + zoom to `$XDG_RUNTIME_DIR/driftwm/state` if changed.
     /// Atomic: writes to .tmp then renames.
     pub fn write_state_file_if_dirty(&mut self) {
-        let cam = self.camera;
-        let z = self.zoom;
+        let cam = self.camera();
+        let z = self.zoom();
         // Compare with epsilon to avoid writing on sub-pixel jitter
         let layout_dirty = self.state_file_layout != self.active_layout;
         if !layout_dirty
@@ -669,8 +794,10 @@ impl DriftWm {
         }
 
         // Momentum friction
-        if new_config.friction != self.config.friction {
-            self.momentum.friction = new_config.friction;
+        if new_config.friction != self.config.friction
+            && let Some(output) = self.active_output()
+        {
+            output_state(&output).momentum.friction = new_config.friction;
         }
 
         // Background shader/tile — clear cached state for lazy re-init

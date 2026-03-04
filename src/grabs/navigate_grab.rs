@@ -48,7 +48,7 @@ impl PointerGrab<DriftWm> for NavigateGrab {
         _focus: Option<(<DriftWm as SeatHandler>::PointerFocus, Point<f64, Logical>)>,
         event: &MotionEvent,
     ) {
-        let current_screen = canvas_to_screen(CanvasPos(event.location), data.camera, data.zoom).0;
+        let current_screen = canvas_to_screen(CanvasPos(event.location), data.camera(), data.zoom()).0;
         let screen_delta = current_screen - self.last_screen_pos;
         self.last_screen_pos = current_screen;
 

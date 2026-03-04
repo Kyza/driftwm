@@ -216,7 +216,7 @@ impl DriftWm {
 
         // position_transformed gives screen-local coords (0..width, 0..height)
         let screen_pos = event.position_transformed(output_geo.size);
-        let canvas_pos = screen_to_canvas(ScreenPos(screen_pos), self.camera, self.zoom).0;
+        let canvas_pos = screen_to_canvas(ScreenPos(screen_pos), self.camera(), self.zoom()).0;
 
         // When locked, pointer only targets the lock surface
         if !matches!(self.session_lock, crate::state::SessionLock::Unlocked) {
@@ -311,7 +311,7 @@ impl DriftWm {
         // Delta is in screen pixels — convert to canvas delta
         let delta = event.delta();
         let canvas_delta: Point<f64, smithay::utils::Logical> =
-            (delta.x / self.zoom, delta.y / self.zoom).into();
+            (delta.x / self.zoom(), delta.y / self.zoom()).into();
         let canvas_pos = old_canvas + canvas_delta;
 
         // single-output assumption: clamps to first output bounds
@@ -323,10 +323,12 @@ impl DriftWm {
             .current_mode()
             .map(|m| m.size.to_logical(1))
             .unwrap_or((1, 1).into());
+        let cur_camera = self.camera();
+        let cur_zoom = self.zoom();
         let screen_pos = driftwm::canvas::canvas_to_screen(
             driftwm::canvas::CanvasPos(canvas_pos),
-            self.camera,
-            self.zoom,
+            cur_camera,
+            cur_zoom,
         ).0;
         let clamped_screen: Point<f64, smithay::utils::Logical> = (
             screen_pos.x.clamp(0.0, output_size.w as f64 - 1.0),
@@ -334,8 +336,8 @@ impl DriftWm {
         ).into();
         let canvas_pos = driftwm::canvas::screen_to_canvas(
             ScreenPos(clamped_screen),
-            self.camera,
-            self.zoom,
+            cur_camera,
+            cur_zoom,
         ).0;
 
         // Emit relative motion event for clients that use zwp_relative_pointer

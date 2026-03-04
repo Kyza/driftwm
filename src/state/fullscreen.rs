@@ -9,7 +9,7 @@ use super::{DriftWm, FocusTarget, FullscreenState};
 impl DriftWm {
     /// Enter fullscreen for the given window: lock viewport, expand window to fill screen.
     pub fn enter_fullscreen(&mut self, window: &Window) {
-        // If already fullscreen (same or different window), exit first
+        // If already fullscreen, exit first
         if self.fullscreen.is_some() {
             self.exit_fullscreen();
         }
@@ -20,8 +20,8 @@ impl DriftWm {
         self.fullscreen = Some(FullscreenState {
             window: window.clone(),
             saved_location,
-            saved_camera: self.camera,
-            saved_zoom: self.zoom,
+            saved_camera: self.camera(),
+            saved_zoom: self.zoom(),
         });
 
         // Tell the client to go fullscreen at output size
@@ -32,18 +32,20 @@ impl DriftWm {
         window.toplevel().unwrap().send_configure();
 
         // Lock viewport: stop all animations and momentum
-        self.zoom = 1.0;
-        self.zoom_target = None;
-        self.zoom_animation_center = None;
-        self.camera_target = None;
-        self.momentum.stop();
-        self.overview_return = None;
+        self.with_output_state(|os| {
+            os.zoom = 1.0;
+            os.zoom_target = None;
+            os.zoom_animation_center = None;
+            os.camera_target = None;
+            os.momentum.stop();
+            os.overview_return = None;
+        });
         // Top/Bottom layers are hidden during fullscreen — reset stale pointer state
         self.pointer_over_layer = false;
 
         // Snap camera to integer for pixel-perfect alignment
-        let camera_i32 = self.camera.to_i32_round();
-        self.camera = Point::from((camera_i32.x as f64, camera_i32.y as f64));
+        let camera_i32 = self.camera().to_i32_round();
+        self.set_camera(Point::from((camera_i32.x as f64, camera_i32.y as f64)));
 
         // Place window at viewport origin and raise
         self.space.map_element(window.clone(), camera_i32, true);
@@ -73,8 +75,8 @@ impl DriftWm {
 
         // Restore window position, camera, zoom
         self.space.map_element(fs.window, fs.saved_location, false);
-        self.camera = fs.saved_camera;
-        self.zoom = fs.saved_zoom;
+        self.set_camera(fs.saved_camera);
+        self.set_zoom(fs.saved_zoom);
         self.update_output_from_camera();
     }
 
@@ -84,16 +86,18 @@ impl DriftWm {
         &mut self,
         canvas_pos: Point<f64, Logical>,
     ) -> Point<f64, Logical> {
-        let old_camera = self.camera;
-        let old_zoom = self.zoom;
+        let old_camera = self.camera();
+        let old_zoom = self.zoom();
         self.exit_fullscreen();
         let screen: Point<f64, Logical> = Point::from((
             (canvas_pos.x - old_camera.x) * old_zoom,
             (canvas_pos.y - old_camera.y) * old_zoom,
         ));
+        let cur_zoom = self.zoom();
+        let cur_camera = self.camera();
         let new_pos = Point::from((
-            screen.x / self.zoom + self.camera.x,
-            screen.y / self.zoom + self.camera.y,
+            screen.x / cur_zoom + cur_camera.x,
+            screen.y / cur_zoom + cur_camera.y,
         ));
         self.warp_pointer(new_pos);
         new_pos

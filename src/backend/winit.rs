@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use crate::render::build_cursor_elements;
 use crate::backend::Backend;
-use crate::state::{CalloopData, log_err};
+use crate::state::{CalloopData, init_output_state, log_err};
 
 /// Initialize the winit backend: create a window, set up the output, and
 /// start the render loop timer.
@@ -73,15 +73,18 @@ pub fn init_winit(
 
     // Centre the viewport so canvas origin (0, 0) is in the middle of the screen
     let logical_size = size.to_logical(1);
-    data.state.camera = Point::from((
+    let initial_camera = Point::from((
         -(logical_size.w as f64) / 2.0,
         -(logical_size.h as f64) / 2.0,
     ));
 
+    // Initialize per-output state for this output
+    init_output_state(&output, initial_camera, data.state.config.friction);
+
     // Map the output into the space at the initial camera position
     data.state
         .space
-        .map_output(&output, data.state.camera.to_i32_round());
+        .map_output(&output, initial_camera.to_i32_round());
 
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
 
@@ -91,7 +94,7 @@ pub fn init_winit(
         .handle()
         .insert_source(timer, move |_, _, data| {
             // --- Advance frame counter ---
-            data.state.frame_counter = data.state.frame_counter.wrapping_add(1);
+            data.state.set_frame_counter(data.state.frame_counter().wrapping_add(1));
 
             // --- Dispatch winit events ---
             let mut stop = false;
@@ -131,8 +134,8 @@ pub fn init_winit(
 
             // --- Delta time ---
             let now = std::time::Instant::now();
-            let dt = (now - data.state.last_frame_instant).min(std::time::Duration::from_millis(33));
-            data.state.last_frame_instant = now;
+            let dt = (now - data.state.last_frame_instant()).min(std::time::Duration::from_millis(33));
+            data.state.set_last_frame_instant(now);
 
             // --- Key repeat for compositor bindings ---
             data.state.apply_key_repeat();
@@ -194,8 +197,8 @@ pub fn init_winit(
             }
 
             // --- Record camera+zoom for next-frame change detection ---
-            data.state.last_rendered_camera = data.state.camera;
-            data.state.last_rendered_zoom = data.state.zoom;
+            data.state.set_last_rendered_camera(data.state.camera());
+            data.state.set_last_rendered_zoom(data.state.zoom());
             data.state.write_state_file_if_dirty();
 
             // --- Put backend back ---

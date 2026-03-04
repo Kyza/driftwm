@@ -176,8 +176,9 @@ impl CompositorHandler for DriftWm {
                                 output.and_then(|o| self.space.output_geometry(&o))
                             };
                             if let Some(output_geo) = output_geo {
-                                let cx = (self.camera.x + output_geo.size.w as f64 / (2.0 * self.zoom)) as i32 - geo.size.w / 2;
-                                let cy = (self.camera.y + output_geo.size.h as f64 / (2.0 * self.zoom)) as i32 - geo.size.h / 2;
+                                let cam = self.camera(); let z = self.zoom();
+                                let cx = (cam.x + output_geo.size.w as f64 / (2.0 * z)) as i32 - geo.size.w / 2;
+                                let cy = (cam.y + output_geo.size.h as f64 / (2.0 * z)) as i32 - geo.size.h / 2;
                                 (cx, cy)
                             } else {
                                 (0, 0)
