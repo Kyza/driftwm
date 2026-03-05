@@ -320,12 +320,12 @@ pub fn update_background_element(
         let canvas_h = (output_size.h as f64 / cur_zoom).ceil() as i32;
         let canvas_area = Rectangle::from_size((canvas_w, canvas_h).into());
         elem.resize(canvas_area, Some(vec![canvas_area]));
-        if camera_moved || zoom_changed {
-            elem.update_uniforms(vec![Uniform::new(
-                "u_camera",
-                (cur_camera.x as f32, cur_camera.y as f32),
-            )]);
-        }
+        // Always update — with multiple outputs the shared element may have
+        // another output's camera from the previous render_frame call.
+        elem.update_uniforms(vec![Uniform::new(
+            "u_camera",
+            (cur_camera.x as f32, cur_camera.y as f32),
+        )]);
     }
     (camera_moved, zoom_changed)
 }

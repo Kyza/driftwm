@@ -6,9 +6,19 @@ use smithay::utils::{Logical, Point};
 use driftwm::canvas::{self, CanvasPos};
 use smithay::wayland::shell::wlr_layer::Layer as WlrLayer;
 
-use super::{DriftWm, FocusTarget};
+use smithay::output::Output;
+
+use super::{DriftWm, FocusTarget, output_state};
 
 impl DriftWm {
+    /// Frame-rate independent lerp factor for smooth animations.
+    /// Returns how much of the remaining distance to cover this frame.
+    fn animation_factor(&self, dt: Duration) -> f64 {
+        let base = self.config.animation_speed;
+        let dt_secs = dt.as_secs_f64();
+        1.0 - (1.0 - base).powf(dt_secs * 60.0)
+    }
+
     /// Fire held compositor action if repeat delay/rate has elapsed.
     pub fn apply_key_repeat(&mut self) {
         let Some((_, ref action, next_fire)) = self.held_action else {
@@ -138,10 +148,7 @@ impl DriftWm {
 
         let old_camera = self.camera();
 
-        let base = self.config.animation_speed;
-        let reference_dt = 1.0 / 60.0;
-        let dt_secs = dt.as_secs_f64();
-        let factor = 1.0 - (1.0 - base).powf(dt_secs / reference_dt);
+        let factor = self.animation_factor(dt);
 
         let dx = target.x - old_camera.x;
         let dy = target.y - old_camera.y;
@@ -195,10 +202,7 @@ impl DriftWm {
         let old_zoom = self.zoom();
         let old_camera = self.camera();
 
-        let base = self.config.animation_speed;
-        let reference_dt = 1.0 / 60.0;
-        let dt_secs = dt.as_secs_f64();
-        let factor = 1.0 - (1.0 - base).powf(dt_secs / reference_dt);
+        let factor = self.animation_factor(dt);
 
         let dz = target - old_zoom;
         if dz.abs() < 0.001 {
@@ -262,6 +266,207 @@ impl DriftWm {
                 screen_y / cur_zoom + cur_camera.y,
             ));
             self.warp_pointer(new_pos);
+        }
+    }
+
+    // -- Multi-output animation ticking (udev backend) --
+    // The existing apply_* methods above operate on active_output() and are used
+    // by the winit backend (single output, timer-based). Winit gets away with
+    // tick-in-render because it's always single-output with a fixed timer.
+
+    /// Tick all per-output animations once per iteration.
+    /// Called from udev render_if_needed() before any render_frame() calls.
+    pub fn tick_all_animations(&mut self) {
+        let now = Instant::now();
+        let dt = (now - self.last_animation_tick).min(Duration::from_millis(33));
+        self.last_animation_tick = now;
+
+        // Global (not per-output) ticks
+        self.apply_key_repeat();
+        self.check_exec_cursor_timeout();
+
+        let outputs: Vec<Output> = self.space.outputs().cloned().collect();
+        let active = self.active_output();
+
+        for output in &outputs {
+            let is_active = active.as_ref().is_some_and(|a| a == output);
+
+            {
+                let mut os = output_state(output);
+                os.frame_counter = os.frame_counter.wrapping_add(1);
+                os.last_frame_instant = now;
+            }
+
+            self.tick_scroll_momentum_on(output, is_active);
+            self.tick_edge_pan_on(output, is_active);
+            self.tick_zoom_animation_on(output, is_active, dt);
+            self.tick_camera_animation_on(output, is_active, dt);
+        }
+
+        // Single camera sync after all outputs are ticked (avoids N×M redundancy)
+        self.update_output_from_camera();
+    }
+
+    fn tick_scroll_momentum_on(&mut self, output: &Output, is_active: bool) {
+        {
+            let os = output_state(output);
+            if os.panning {
+                return;
+            }
+        }
+
+        let delta = {
+            let mut os = output_state(output);
+            let fc = os.frame_counter;
+            os.momentum.tick(fc)
+        };
+        let Some(delta) = delta else { return };
+
+        {
+            let mut os = output_state(output);
+            os.camera.x += delta.x;
+            os.camera.y += delta.y;
+        }
+
+        if is_active {
+            let pos = self.seat.get_pointer().unwrap().current_location();
+            self.warp_pointer(pos + delta);
+        }
+    }
+
+    fn tick_edge_pan_on(&mut self, output: &Output, is_active: bool) {
+        let canvas_delta = {
+            let os = output_state(output);
+            let Some(velocity) = os.edge_pan_velocity else { return };
+            Point::from((velocity.x / os.zoom, velocity.y / os.zoom))
+        };
+
+        {
+            let mut os = output_state(output);
+            os.camera.x += canvas_delta.x;
+            os.camera.y += canvas_delta.y;
+        }
+
+        if is_active {
+            let pos = self.seat.get_pointer().unwrap().current_location();
+            self.warp_pointer(pos + canvas_delta);
+        }
+    }
+
+    fn tick_camera_animation_on(&mut self, output: &Output, is_active: bool, dt: Duration) {
+        let (target, old_camera) = {
+            let os = output_state(output);
+            let Some(target) = os.camera_target else { return };
+            (target, os.camera)
+        };
+
+        let factor = self.animation_factor(dt);
+
+        let dx = target.x - old_camera.x;
+        let dy = target.y - old_camera.y;
+
+        {
+            let mut os = output_state(output);
+            if dx * dx + dy * dy < 0.25 {
+                os.camera = target;
+                os.camera_target = None;
+            } else {
+                os.camera = Point::from((
+                    old_camera.x + dx * factor,
+                    old_camera.y + dy * factor,
+                ));
+            }
+        }
+
+        if is_active {
+            let new_camera = output_state(output).camera;
+            let delta = new_camera - old_camera;
+            let pos = self.seat.get_pointer().unwrap().current_location();
+            self.warp_pointer(pos + delta);
+        }
+    }
+
+    fn tick_zoom_animation_on(&mut self, output: &Output, is_active: bool, dt: Duration) {
+        let (target, old_zoom, old_camera, anim_center) = {
+            let os = output_state(output);
+            let Some(target) = os.zoom_target else { return };
+            (target, os.zoom, os.camera, os.zoom_animation_center)
+        };
+
+        let factor = self.animation_factor(dt);
+
+        let dz = target - old_zoom;
+        {
+            let mut os = output_state(output);
+            if dz.abs() < 0.001 {
+                os.zoom = target;
+                os.zoom_target = None;
+            } else {
+                os.zoom = old_zoom + dz * factor;
+            }
+        }
+
+        if let Some(target_center) = anim_center {
+            let vp = output
+                .current_mode()
+                .map(|m| m.size.to_logical(1))
+                .unwrap_or((1, 1).into());
+
+            let current_center: Point<f64, Logical> = Point::from((
+                old_camera.x + vp.w as f64 / (2.0 * old_zoom),
+                old_camera.y + vp.h as f64 / (2.0 * old_zoom),
+            ));
+            let cx = current_center.x + (target_center.x - current_center.x) * factor;
+            let cy = current_center.y + (target_center.y - current_center.y) * factor;
+
+            {
+                let mut os = output_state(output);
+                let cur_zoom = os.zoom;
+                os.camera = Point::from((
+                    cx - vp.w as f64 / (2.0 * cur_zoom),
+                    cy - vp.h as f64 / (2.0 * cur_zoom),
+                ));
+                // Suppress camera_animation — we set camera directly
+                os.camera_target = None;
+
+                if os.zoom_target.is_none() {
+                    // Zoom snapped — hand off final convergence to camera_animation
+                    let final_camera = Point::from((
+                        target_center.x - vp.w as f64 / (2.0 * cur_zoom),
+                        target_center.y - vp.h as f64 / (2.0 * cur_zoom),
+                    ));
+                    os.zoom_animation_center = None;
+                    os.camera_target = Some(final_camera);
+                }
+            }
+
+            if is_active {
+                let (cur_zoom, cur_camera) = {
+                    let os = output_state(output);
+                    (os.zoom, os.camera)
+                };
+                let pos = self.seat.get_pointer().unwrap().current_location();
+                let screen_x = (pos.x - old_camera.x) * old_zoom;
+                let screen_y = (pos.y - old_camera.y) * old_zoom;
+                let new_pos = Point::from((
+                    screen_x / cur_zoom + cur_camera.x,
+                    screen_y / cur_zoom + cur_camera.y,
+                ));
+                self.warp_pointer(new_pos);
+            }
+        } else {
+            let cur_zoom = output_state(output).zoom;
+            if cur_zoom != old_zoom && is_active {
+                let cur_camera = output_state(output).camera;
+                let pos = self.seat.get_pointer().unwrap().current_location();
+                let screen_x = (pos.x - cur_camera.x) * old_zoom;
+                let screen_y = (pos.y - cur_camera.y) * old_zoom;
+                let new_pos = Point::from((
+                    screen_x / cur_zoom + cur_camera.x,
+                    screen_y / cur_zoom + cur_camera.y,
+                ));
+                self.warp_pointer(new_pos);
+            }
         }
     }
 }

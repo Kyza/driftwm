@@ -340,6 +340,10 @@ pub struct DriftWm {
     pub config_file_mtime: Option<std::time::SystemTime>,
 
     // -- global: multi-monitor --
+    /// Global animation tick timestamp — used for dt computation in tick_all_animations().
+    /// Separate from per-output last_frame_instant to avoid double-ticking when multiple
+    /// outputs render in one iteration.
+    pub last_animation_tick: Instant,
     /// The output the pointer is currently on (for input routing).
     pub focused_output: Option<Output>,
     /// The output a gesture started on (pinned for duration of gesture).
@@ -479,6 +483,7 @@ impl DriftWm {
             exec_cursor_show_at: None,
             exec_cursor_deadline: None,
             config_file_mtime: None,
+            last_animation_tick: Instant::now(),
             focused_output: None,
             gesture_output: None,
         }
@@ -526,17 +531,20 @@ impl DriftWm {
             .is_some_and(|cf| cf.total_duration_ms > 0)
     }
 
+    /// True if a specific output has per-output animations in progress.
+    pub fn output_has_active_animations(&self, output: &Output) -> bool {
+        let os = output_state(output);
+        os.camera_target.is_some()
+            || os.zoom_target.is_some()
+            || os.edge_pan_velocity.is_some()
+            || os.momentum.velocity.x != 0.0
+            || os.momentum.velocity.y != 0.0
+    }
+
     /// True if any animation is still in progress and needs continued rendering.
+    #[allow(dead_code)]
     pub fn has_active_animations(&self) -> bool {
-        let any_output = self.space.outputs().any(|output| {
-            let os = output_state(output);
-            os.camera_target.is_some()
-                || os.zoom_target.is_some()
-                || os.edge_pan_velocity.is_some()
-                || os.momentum.velocity.x != 0.0
-                || os.momentum.velocity.y != 0.0
-        });
-        any_output
+        self.space.outputs().any(|o| self.output_has_active_animations(o))
             || self.held_action.is_some()
             || self.exec_cursor_show_at.is_some()
             || self.exec_cursor_deadline.is_some()

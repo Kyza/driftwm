@@ -342,25 +342,13 @@ impl DriftWm {
         // Find target output at new layout pos
         let (target_output, screen_pos) = if let Some(target) = self.output_at_layout_pos(new_layout) {
             if target != cur_output {
-                // Output crossing — check sticky boundary
-                let speed = (delta.x * delta.x + delta.y * delta.y).sqrt();
-                let threshold = self.config.edge_zone * 0.3;
-                if speed < threshold {
-                    // Slow movement: clamp to current output edge
-                    let clamped: Point<f64, smithay::utils::Logical> = (
-                        (old_screen.x + delta.x).clamp(0.0, output_size.w as f64 - 1.0),
-                        (old_screen.y + delta.y).clamp(0.0, output_size.h as f64 - 1.0),
-                    ).into();
-                    (cur_output.clone(), clamped)
-                } else {
-                    // Fast movement: cross to target output
-                    let target_lp = crate::state::output_state(&target).layout_position;
-                    let target_screen: Point<f64, smithay::utils::Logical> = (
-                        new_layout.x - target_lp.x as f64,
-                        new_layout.y - target_lp.y as f64,
-                    ).into();
-                    (target, target_screen)
-                }
+                // Cross to target output
+                let target_lp = crate::state::output_state(&target).layout_position;
+                let target_screen: Point<f64, smithay::utils::Logical> = (
+                    new_layout.x - target_lp.x as f64,
+                    new_layout.y - target_lp.y as f64,
+                ).into();
+                (target, target_screen)
             } else {
                 // Same output — compute screen pos within it
                 let screen: Point<f64, smithay::utils::Logical> = (

@@ -69,9 +69,31 @@ struct SurfaceData {
 /// passed to render_if_needed. main.rs never sees internals.
 pub(crate) struct UdevDevice(Rc<RefCell<DeviceData>>);
 
-/// Render all outputs that need a frame and don't have one pending.
+/// Tick animations once for all outputs, mark dirty CRTCs, then render.
 pub(crate) fn render_if_needed(device: &UdevDevice, data: &mut CalloopData) {
+    // 1. Tick animations once for all outputs (before device borrow)
+    data.state.tick_all_animations();
+
     let mut dev = device.0.borrow_mut();
+
+    // 2. Mark CRTCs dirty for per-output animations
+    for (&crtc, surface) in dev.surfaces.iter() {
+        if data.state.output_has_active_animations(&surface.output) {
+            data.state.redraws_needed.insert(crtc);
+        }
+    }
+
+    // 3. Global animations (key repeat, cursor) → mark all dirty
+    // mark_all_dirty() uses active_crtcs on DriftWm, not dev.surfaces
+    if data.state.held_action.is_some()
+        || data.state.exec_cursor_show_at.is_some()
+        || data.state.exec_cursor_deadline.is_some()
+        || data.state.cursor_is_animated()
+    {
+        data.state.mark_all_dirty();
+    }
+
+    // 4. Render outputs that need it
     for (&crtc, surface) in dev.surfaces.iter_mut() {
         if data.state.redraws_needed.contains(&crtc)
             && !data.state.frames_pending.contains(&crtc)
@@ -412,6 +434,38 @@ pub fn init_udev(
                                 tracing::info!("Hotplug: CRTC {crtc:?} disconnected");
                                 if let Some(surface) = surfaces.remove(&crtc) {
                                     data.state.space.unmap_output(&surface.output);
+
+                                    // Cancel any active pointer grab — grabs store an Output
+                                    // clone and would operate on stale state after disconnect.
+                                    if let Some(pointer) = data.state.seat.get_pointer() {
+                                        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                        pointer.unset_grab(&mut data.state, serial, 0);
+                                    }
+
+                                    // Clean up focused_output if it was on the disconnected output
+                                    if data.state.focused_output.as_ref().is_some_and(|fo| fo == &surface.output) {
+                                        data.state.focused_output = data.state.space.outputs().next().cloned();
+                                        if let Some(ref new_out) = data.state.focused_output {
+                                            let (cam, zoom, size) = {
+                                                let os = crate::state::output_state(new_out);
+                                                let sz = new_out.current_mode()
+                                                    .map(|m| m.size.to_logical(1))
+                                                    .unwrap_or((1, 1).into());
+                                                (os.camera, os.zoom, sz)
+                                            };
+                                            let center = smithay::utils::Point::from((
+                                                cam.x + size.w as f64 / (2.0 * zoom),
+                                                cam.y + size.h as f64 / (2.0 * zoom),
+                                            ));
+                                            data.state.warp_pointer(center);
+                                        }
+                                    }
+
+                                    // Clean up gesture state if gesture was on the disconnected output
+                                    if data.state.gesture_output.as_ref().is_some_and(|go| go == &surface.output) {
+                                        data.state.gesture_output = None;
+                                        data.state.gesture_state = None;
+                                    }
                                 }
                                 data.state.active_crtcs.remove(&crtc);
                                 data.state.frames_pending.remove(&crtc);
@@ -694,24 +748,6 @@ fn render_frame(
     crtc: crtc::Handle,
 ) {
     data.state.redraws_needed.remove(&crtc);
-
-    let now = std::time::Instant::now();
-    let dt = (now - data.state.last_frame_instant()).min(std::time::Duration::from_millis(33));
-    data.state.set_last_frame_instant(now);
-    data.state.set_frame_counter(data.state.frame_counter().wrapping_add(1));
-
-    // Animations
-    data.state.apply_key_repeat();
-    data.state.apply_scroll_momentum();
-    data.state.apply_edge_pan();
-    data.state.apply_zoom_animation(dt);
-    data.state.apply_camera_animation(dt);
-    data.state.check_exec_cursor_timeout();
-
-    // Keep rendering while animations are in progress
-    if data.state.has_active_animations() {
-        data.state.redraws_needed.insert(crtc);
-    }
 
     // Dispatch Wayland clients
     log_err("dispatch_clients", data.display.dispatch_clients(&mut data.state));
