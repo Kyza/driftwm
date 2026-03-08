@@ -342,7 +342,8 @@ pub enum DecorationMode {
 /// Parsed window rule from config.
 #[derive(Clone, Debug)]
 pub struct WindowRule {
-    pub app_id: String,
+    pub app_id: Option<String>,
+    pub title: Option<String>,
     pub position: Option<(i32, i32)>,
     /// Widget windows are pinned (immovable), excluded from navigation/alt-tab,
     /// and always stacked below normal windows.

@@ -313,11 +313,11 @@ impl Config {
 
         let decorations = parse_decoration_config(raw.decorations);
 
-        let window_rules = raw
+        let window_rules: Vec<WindowRule> = raw
             .window_rules
             .unwrap_or_default()
             .into_iter()
-            .map(parse_window_rule)
+            .filter_map(parse_window_rule)
             .collect();
 
         let output_configs = {
@@ -386,32 +386,37 @@ impl Config {
         }
     }
 
-    /// Find the first matching window rule for the given `app_id`.
-    /// Supports simple glob: `*` anywhere in the pattern.
-    pub fn match_window_rule(&self, app_id: &str) -> Option<&WindowRule> {
+    /// Find the first matching window rule for the given `app_id` and `title`.
+    pub fn match_window_rule(&self, app_id: &str, title: &str) -> Option<&WindowRule> {
         self.window_rules
             .iter()
-            .find(|rule| Self::rule_matches(rule, app_id))
+            .find(|rule| Self::rule_matches(rule, app_id, title))
     }
 
-    /// Find the Nth matching window rule (with position) for the given `app_id`.
+    /// Find the Nth matching window rule (with position) for the given `app_id` and `title`.
     /// Used by layer shell to assign different rules to successive surfaces with
     /// the same namespace (e.g. two waybar instances at different positions).
-    pub fn match_window_rule_nth(&self, app_id: &str, n: usize) -> Option<&WindowRule> {
+    pub fn match_window_rule_nth(&self, app_id: &str, title: &str, n: usize) -> Option<&WindowRule> {
         self.window_rules
             .iter()
-            .filter(|rule| rule.position.is_some() && Self::rule_matches(rule, app_id))
+            .filter(|rule| rule.position.is_some() && Self::rule_matches(rule, app_id, title))
             .nth(n)
     }
 
-    fn rule_matches(rule: &WindowRule, app_id: &str) -> bool {
-        if let Some((prefix, suffix)) = rule.app_id.split_once('*') {
-            app_id.len() >= prefix.len() + suffix.len()
-                && app_id.starts_with(prefix)
-                && app_id[prefix.len()..].ends_with(suffix)
+    fn glob_matches(pattern: &str, value: &str) -> bool {
+        if let Some((prefix, suffix)) = pattern.split_once('*') {
+            value.len() >= prefix.len() + suffix.len()
+                && value.starts_with(prefix)
+                && value[prefix.len()..].ends_with(suffix)
         } else {
-            rule.app_id == app_id
+            pattern == value
         }
+    }
+
+    fn rule_matches(rule: &WindowRule, app_id: &str, title: &str) -> bool {
+        let app_ok = rule.app_id.as_ref().is_none_or(|pat| Self::glob_matches(pat, app_id));
+        let title_ok = rule.title.as_ref().is_none_or(|pat| Self::glob_matches(pat, title));
+        app_ok && title_ok
     }
 }
 
@@ -470,7 +475,11 @@ fn parse_decoration_config(raw: DecorationFileConfig) -> DecorationConfig {
     }
 }
 
-fn parse_window_rule(r: WindowRuleFile) -> WindowRule {
+fn parse_window_rule(r: WindowRuleFile) -> Option<WindowRule> {
+    if r.app_id.is_none() && r.title.is_none() {
+        tracing::warn!("Window rule has neither app_id nor title, skipping");
+        return None;
+    }
     let decoration = match r.decoration.as_deref() {
         Some("none") => DecorationMode::None,
         Some("server") => DecorationMode::Server,
@@ -480,13 +489,14 @@ fn parse_window_rule(r: WindowRuleFile) -> WindowRule {
             DecorationMode::Client
         }
     };
-    WindowRule {
+    Some(WindowRule {
         app_id: r.app_id,
+        title: r.title,
         position: r.position.map(|[x, y]| (x, y)),
         widget: r.widget,
         no_focus: r.no_focus,
         decoration,
-    }
+    })
 }
 
 fn parse_transform(s: &str) -> Result<Transform, String> {

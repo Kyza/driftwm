@@ -140,37 +140,40 @@ impl CompositorHandler for DriftWm {
                 // Center window on first commit once size is known
                 if self.pending_center.remove(&root) {
                     let geo = window.geometry();
-                    if geo.size.w > 0 && geo.size.h > 0 {
-                        // Read app_id and check window rules
-                        let app_id = with_states(&root, |states| {
-                            states
-                                .data_map
-                                .get::<XdgToplevelSurfaceData>()
-                                .and_then(|d| d.lock().ok())
-                                .and_then(|guard| guard.app_id.clone())
-                        });
+                    let has_size = geo.size.w > 0 && geo.size.h > 0;
 
-                        let rule = app_id
-                            .as_deref()
-                            .and_then(|id| self.config.match_window_rule(id))
-                            .cloned();
+                    // Read app_id/title and check window rules
+                    let (app_id, title) = with_states(&root, |states| {
+                        states
+                            .data_map
+                            .get::<XdgToplevelSurfaceData>()
+                            .and_then(|d| d.lock().ok())
+                            .map(|guard| (guard.app_id.clone(), guard.title.clone()))
+                            .unwrap_or_default()
+                    });
 
-                        if let Some(ref rule) = rule {
-                            // Store applied rule in surface data_map
-                            let applied = driftwm::config::AppliedWindowRule {
-                                widget: rule.widget,
-                                no_focus: rule.no_focus,
-                                decoration: rule.decoration.clone(),
-                            };
-                            with_states(&root, |states| {
-                                states.data_map.insert_if_missing_threadsafe(|| {
-                                    std::sync::Mutex::new(applied.clone())
-                                });
-                                *states.data_map.get::<std::sync::Mutex<driftwm::config::AppliedWindowRule>>()
-                                    .unwrap().lock().unwrap() = applied;
+                    let rule = self.config.match_window_rule(
+                        app_id.as_deref().unwrap_or(""),
+                        title.as_deref().unwrap_or(""),
+                    ).cloned();
+
+                    if let Some(ref rule) = rule {
+                        // Store applied rule in surface data_map
+                        let applied = driftwm::config::AppliedWindowRule {
+                            widget: rule.widget,
+                            no_focus: rule.no_focus,
+                            decoration: rule.decoration.clone(),
+                        };
+                        with_states(&root, |states| {
+                            states.data_map.insert_if_missing_threadsafe(|| {
+                                std::sync::Mutex::new(applied.clone())
                             });
-                        }
+                            *states.data_map.get::<std::sync::Mutex<driftwm::config::AppliedWindowRule>>()
+                                .unwrap().lock().unwrap() = applied;
+                        });
+                    }
 
+                    if has_size {
                         // Position: rule coords are window-center with Y-up convention
                         // (positive = above origin). Negate Y for internal canvas coords.
                         let pos = if let Some(ref rule) = rule
@@ -194,37 +197,39 @@ impl CompositorHandler for DriftWm {
 
                         let activate = rule.as_ref().is_none_or(|r| !r.widget);
                         self.space.map_element(window.clone(), pos, activate);
+                    }
 
-                        if let Some(ref rule) = rule {
-                            // Decoration override: none/server → force SSD on the protocol level
-                            if rule.decoration != driftwm::config::DecorationMode::Client {
-                                use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
-                                if let Some(toplevel) = window.toplevel() {
-                                    toplevel.with_pending_state(|state| {
-                                        state.decoration_mode = Some(Mode::ServerSide);
-                                    });
-                                    toplevel.send_configure();
-                                }
-                                // Track in pending_ssd so the decoration creation check below sees it
-                                self.pending_ssd.insert(root.id());
+                    if let Some(ref rule) = rule {
+                        // Decoration override: none/server → force SSD on the protocol level
+                        if rule.decoration != driftwm::config::DecorationMode::Client {
+                            use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
+                            if let Some(toplevel) = window.toplevel() {
+                                toplevel.with_pending_state(|state| {
+                                    state.decoration_mode = Some(Mode::ServerSide);
+                                });
+                                toplevel.send_configure();
                             }
-
-                            if rule.widget {
-                                self.enforce_below_windows();
-                            }
-
-                            if rule.widget || rule.no_focus {
-                                self.focus_history.retain(|w| w != &window);
-                                // Refocus previous window if this was focused
-                                if let Some(prev) = self.focus_history.first().cloned() {
-                                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-                                    let keyboard = self.seat.get_keyboard().unwrap();
-                                    let focus = prev.wl_surface().map(|s| FocusTarget(s.into_owned()));
-                                    keyboard.set_focus(self, focus, serial);
-                                }
-                            }
+                            // Track in pending_ssd so the decoration creation check below sees it
+                            self.pending_ssd.insert(root.id());
                         }
 
+                        if rule.widget {
+                            self.enforce_below_windows();
+                        }
+
+                        if rule.widget || rule.no_focus {
+                            self.focus_history.retain(|w| w != &window);
+                            // Refocus previous window if this was focused
+                            if let Some(prev) = self.focus_history.first().cloned() {
+                                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                let keyboard = self.seat.get_keyboard().unwrap();
+                                let focus = prev.wl_surface().map(|s| FocusTarget(s.into_owned()));
+                                keyboard.set_focus(self, focus, serial);
+                            }
+                        }
+                    }
+
+                    if has_size {
                         if rule.as_ref().is_some_and(|r| r.position.is_some() && !r.widget && !r.no_focus) {
                             self.navigate_to_window(&window, true);
                         }
@@ -255,7 +260,7 @@ impl CompositorHandler for DriftWm {
                                 smithay::input::pointer::CursorImageStatus::default_named();
                         }
                     } else {
-                        // Not ready yet, retry next commit
+                        // No size yet — retry next commit
                         self.pending_center.insert(root.clone());
                     }
                 }

@@ -3,7 +3,6 @@
 autostart = [
     "/usr/libexec/polkit-gnome-authentication-agent-1",
     "swayosd-server --top-margin 0.95",
-    "blueman-applet",
     "swaync",
     "waybar -c ~/.config/waybar/taskbar.jsonc -s ~/.config/waybar/taskbar.css",
     "sleep 1 && waybar -c ~/.config/waybar/tray.jsonc -s ~/.config/waybar/tray.css",
@@ -119,3 +118,8 @@ app_id = "drift-power-menu"
 position = [274, -370]
 widget = true
 no_focus = false
+
+[[window_rules]]
+title = "winit window"
+widget = true
+no_focus = true

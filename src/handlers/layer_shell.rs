@@ -81,7 +81,7 @@ impl WlrLayerShellHandler for DriftWm {
             .count();
         let rule = self
             .config
-            .match_window_rule_nth(&namespace, existing_count)
+            .match_window_rule_nth(&namespace, "", existing_count)
             .cloned();
         if let Some(ref rule) = rule
             && let Some((rx, ry)) = rule.position

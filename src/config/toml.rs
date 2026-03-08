@@ -134,7 +134,8 @@ pub(super) struct DecorationFileConfig {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct WindowRuleFile {
-    pub app_id: String,
+    pub app_id: Option<String>,
+    pub title: Option<String>,
     pub position: Option<[i32; 2]>,
     #[serde(default)]
     pub widget: bool,

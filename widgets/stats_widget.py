@@ -46,9 +46,9 @@ click_map: dict[int, list[str] | str | tuple] = {}
 # Click actions per section
 ACTION_CPU = ["gnome-system-monitor"]
 ACTION_RAM = ["gnome-system-monitor"]
-ACTION_VOL = ["pavucontrol"]
-ACTION_WIFI = ["alacritty", "-e", "nmtui"]
-ACTION_BT = ["blueman-manager"]
+ACTION_VOL = ["cosmic-settings", "sound"]
+ACTION_WIFI = ["cosmic-settings", "wireless"]
+ACTION_BT = ["cosmic-settings", "bluetooth"]
 
 # Bar geometry: 3 spaces + icon(2) + 2 spaces + PAD(15) = column 22, width 10
 BAR_X_START = 22

@@ -59,7 +59,8 @@ impl XwmHandler for DriftWm {
         // Check window rules for explicit positioning.
         let geo = window.geometry();
         let class = window.class();
-        let rule = self.config.match_window_rule(&class).cloned();
+        let title = window.title();
+        let rule = self.config.match_window_rule(&class, &title).cloned();
 
         let pos = if let Some(ref rule) = rule
             && let Some((x, y)) = rule.position
@@ -328,7 +329,8 @@ impl XWaylandShellHandler for DriftWm {
 
         // Apply window rules — store in wl_surface data_map (now available)
         let class = surface.class();
-        let rule = self.config.match_window_rule(&class).cloned();
+        let title = surface.title();
+        let rule = self.config.match_window_rule(&class, &title).cloned();
         if let Some(ref rule) = rule {
             let applied = driftwm::config::AppliedWindowRule {
                 widget: rule.widget,
