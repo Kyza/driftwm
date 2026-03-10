@@ -504,6 +504,7 @@ fn parse_window_rule(r: WindowRuleFile) -> Option<WindowRule> {
         widget: r.widget,
         no_focus: r.no_focus,
         decoration,
+        sharp_scale: r.sharp_scale.unwrap_or(true),
     })
 }
 

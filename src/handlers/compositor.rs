@@ -166,11 +166,7 @@ impl CompositorHandler for DriftWm {
 
                     if let Some(ref rule) = rule {
                         // Store applied rule in surface data_map
-                        let applied = driftwm::config::AppliedWindowRule {
-                            widget: rule.widget,
-                            no_focus: rule.no_focus,
-                            decoration: rule.decoration.clone(),
-                        };
+                        let applied = driftwm::config::AppliedWindowRule::from(rule);
                         with_states(&root, |states| {
                             states.data_map.insert_if_missing_threadsafe(|| {
                                 std::sync::Mutex::new(applied.clone())

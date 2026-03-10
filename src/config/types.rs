@@ -351,6 +351,7 @@ pub struct WindowRule {
     pub widget: bool,
     pub no_focus: bool,
     pub decoration: DecorationMode,
+    pub sharp_scale: bool,
 }
 
 /// Runtime rule state stored in a surface's data_map after matching.
@@ -359,6 +360,18 @@ pub struct AppliedWindowRule {
     pub widget: bool,
     pub no_focus: bool,
     pub decoration: DecorationMode,
+    pub sharp_scale: bool,
+}
+
+impl From<&WindowRule> for AppliedWindowRule {
+    fn from(rule: &WindowRule) -> Self {
+        Self {
+            widget: rule.widget,
+            no_focus: rule.no_focus,
+            decoration: rule.decoration.clone(),
+            sharp_scale: rule.sharp_scale,
+        }
+    }
 }
 
 /// Read the applied window rule from a surface's data_map (if any).

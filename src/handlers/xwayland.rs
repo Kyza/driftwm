@@ -343,11 +343,7 @@ impl XWaylandShellHandler for DriftWm {
         let title = surface.title();
         let rule = self.config.match_window_rule(&class, &title).cloned();
         if let Some(ref rule) = rule {
-            let applied = driftwm::config::AppliedWindowRule {
-                widget: rule.widget,
-                no_focus: rule.no_focus,
-                decoration: rule.decoration.clone(),
-            };
+            let applied = driftwm::config::AppliedWindowRule::from(rule);
             with_states(&wl_surface, |states| {
                 states.data_map.insert_if_missing_threadsafe(|| {
                     std::sync::Mutex::new(applied.clone())

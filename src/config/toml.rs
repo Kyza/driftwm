@@ -143,6 +143,7 @@ pub(super) struct WindowRuleFile {
     #[serde(default)]
     pub no_focus: bool,
     pub decoration: Option<String>,
+    pub sharp_scale: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]

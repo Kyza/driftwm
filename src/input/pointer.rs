@@ -513,6 +513,9 @@ impl DriftWm {
                                 os.momentum.stop();
                             });
                             self.update_output_from_camera();
+                            if let Some(output) = self.active_output() {
+                                self.schedule_sharp_scale(&output);
+                            }
 
                             let under = self.surface_under(pos, None);
                             let serial = SERIAL_COUNTER.next_serial();

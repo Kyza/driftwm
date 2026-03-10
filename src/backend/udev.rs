@@ -509,6 +509,7 @@ pub fn init_udev(
                                         data.cached_bg_elements.remove(&surface.output.name());
                                         data.lock_surfaces.remove(&surface.output);
                                     } else {
+                                        data.cancel_sharp_scale(&surface.output);
                                         data.space.unmap_output(&surface.output);
 
                                         // Cancel any active pointer grab — grabs store an Output

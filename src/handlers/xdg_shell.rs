@@ -56,7 +56,22 @@ impl XdgShellHandler for DriftWm {
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().unwrap();
         keyboard.set_focus(self, Some(FocusTarget(wl_surface.clone())), serial);
-        self.pending_center.insert(wl_surface);
+        self.pending_center.insert(wl_surface.clone());
+
+        if let Some(output) = self.active_output() {
+            let os = crate::state::output_state(&output);
+            if os.zoom_target.is_none() && os.zoom != 1.0 {
+                let effective = crate::state::effective_fractional_scale(&output, os.zoom);
+                drop(os);
+                if self.surface_wants_sharp_scale(&wl_surface) {
+                    with_states(&wl_surface, |states| {
+                        smithay::wayland::fractional_scale::with_fractional_scale(states, |fs| {
+                            fs.set_preferred_scale(effective);
+                        });
+                    });
+                }
+            }
+        }
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {

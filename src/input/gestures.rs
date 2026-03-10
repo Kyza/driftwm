@@ -656,6 +656,10 @@ impl DriftWm {
                     self.update_output_from_camera();
                     self.warp_pointer(pos);
                 }
+                let sharp_output = self.gesture_output.clone().or_else(|| self.active_output());
+                if let Some(output) = sharp_output {
+                    self.schedule_sharp_scale(&output);
+                }
             }
             GestureState::PinchForward => {
                 self.forward_pinch_end(cancelled, time);
@@ -872,6 +876,9 @@ impl DriftWm {
             os.zoom_animation_center = None;
             os.momentum.stop();
         });
+        if let Some(output) = self.active_output() {
+            self.cancel_sharp_scale(&output);
+        }
     }
 
     // ── Client forwarding ──────────────────────────────────────────────

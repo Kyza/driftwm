@@ -105,6 +105,7 @@ pub enum SessionLock {
 }
 
 pub use crate::focus::FocusTarget;
+pub(crate) use animation::effective_fractional_scale;
 
 /// Log an error result with context, discarding the Ok value.
 #[inline]
@@ -174,6 +175,8 @@ pub struct OutputState {
     pub layout_position: Point<i32, Logical>,
     /// Saved home position for HomeToggle (per-output).
     pub home_return: Option<HomeReturn>,
+    /// Debounce timer for sharp-at-rest fractional scale updates.
+    pub sharp_scale_timer: Option<smithay::reexports::calloop::RegistrationToken>,
 }
 
 /// Initialize per-output state on a newly created output.
@@ -201,6 +204,7 @@ pub fn init_output_state(output: &Output, camera: Point<f64, Logical>, friction:
                 last_frame_instant: Instant::now(),
                 layout_position,
                 home_return: None,
+                sharp_scale_timer: None,
             })
         });
 }
@@ -915,7 +919,11 @@ impl DriftWm {
         output_state(&self.active_output().unwrap()).zoom_target
     }
     pub fn set_zoom_target(&mut self, val: Option<f64>) {
-        output_state(&self.active_output().unwrap()).zoom_target = val;
+        let output = self.active_output().unwrap();
+        if val.is_some() {
+            self.cancel_sharp_scale(&output);
+        }
+        output_state(&output).zoom_target = val;
     }
     pub fn zoom_animation_center(&self) -> Option<Point<f64, Logical>> {
         output_state(&self.active_output().unwrap()).zoom_animation_center
@@ -971,6 +979,33 @@ impl DriftWm {
         self.active_output()
             .map(|o| output_logical_size(&o))
             .unwrap_or((1, 1).into())
+    }
+
+    /// Check whether a surface should participate in sharp-at-rest scale adjustment.
+    /// Checks the applied rule first (available after first commit), then falls back
+    /// to looking up the config rule by app_id (covers pre-commit surfaces).
+    pub fn surface_wants_sharp_scale(
+        &self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> bool {
+        // Fast path: rule already applied to data_map
+        if let Some(rule) = driftwm::config::applied_rule(surface) {
+            return rule.sharp_scale;
+        }
+        // Pre-commit: look up by app_id from xdg toplevel state
+        let app_id = smithay::wayland::compositor::with_states(surface, |states| {
+            states
+                .data_map
+                .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                .and_then(|d| d.lock().ok())
+                .and_then(|guard| guard.app_id.clone())
+        });
+        if let Some(app_id) = app_id
+            && let Some(rule) = self.config.match_window_rule(&app_id, "")
+        {
+            return rule.sharp_scale;
+        }
+        true
     }
 
     /// Write viewport center + zoom to `$XDG_RUNTIME_DIR/driftwm/state` if changed.
@@ -1327,6 +1362,7 @@ mod tests {
             last_frame_instant: Instant::now(),
             layout_position: Point::from(layout_position),
             home_return: None,
+            sharp_scale_timer: None,
         }
     }
 
