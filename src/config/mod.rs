@@ -532,6 +532,14 @@ fn parse_window_rule(r: WindowRuleFile) -> Option<WindowRule> {
         decoration,
         sharp_scale: r.sharp_scale.unwrap_or(true),
         blur: r.blur.unwrap_or(false),
+        opacity: r.opacity.map(|v| {
+            if !(0.0..=1.0).contains(&v) {
+                tracing::warn!("Window rule opacity {v} out of range, clamping to 0.0–1.0");
+                v.clamp(0.0, 1.0)
+            } else {
+                v
+            }
+        }),
     })
 }
 

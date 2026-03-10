@@ -154,6 +154,7 @@ pub(super) struct WindowRuleFile {
     pub decoration: Option<String>,
     pub sharp_scale: Option<bool>,
     pub blur: Option<bool>,
+    pub opacity: Option<f64>,
 }
 
 #[derive(Deserialize, Default)]

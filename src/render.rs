@@ -3,6 +3,7 @@ use std::time::Duration;
 use smithay::{
     backend::renderer::{
         element::{
+            Element,
             Kind,
             memory::MemoryRenderBufferRenderElement,
             render_elements,
@@ -696,16 +697,17 @@ pub fn compose_frame(
             loc.x as f64 - geom_loc.x as f64 - camera.x,
             loc.y as f64 - geom_loc.y as f64 - camera.y,
         ));
+        let applied = driftwm::config::applied_rule(&wl_surface);
+        let is_widget = applied.as_ref().is_some_and(|r| r.widget);
+        let wants_blur = blur_enabled && applied.as_ref().is_some_and(|r| r.blur);
+        let opacity = applied.as_ref().and_then(|r| r.opacity).unwrap_or(1.0);
+
         let elems = window.render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
             renderer,
             render_loc.to_physical_precise_round(scale),
             scale,
-            1.0,
+            opacity as f32,
         );
-
-        let applied = driftwm::config::applied_rule(&wl_surface);
-        let is_widget = applied.as_ref().is_some_and(|r| r.widget);
-        let wants_blur = blur_enabled && applied.as_ref().is_some_and(|r| r.blur);
 
         let target = if is_widget { &mut zoomed_widgets } else { &mut zoomed_normal };
         let elem_start = target.len();
@@ -726,11 +728,12 @@ pub fn compose_frame(
                     render_loc.y - bar_height as f64,
                 ));
                 let bar_physical: Point<f64, Physical> = bar_loc.to_physical_precise_round(scale);
+                let bar_alpha = if opacity < 1.0 { Some(opacity as f32) } else { None };
                 if let Ok(bar_elem) = MemoryRenderBufferRenderElement::from_buffer(
                     renderer,
                     bar_physical,
                     &deco.title_bar,
-                    None,
+                    bar_alpha,
                     None,
                     None,
                     Kind::Unspecified,
@@ -770,6 +773,10 @@ pub fn compose_frame(
 
                 if let Some(deco) = state.decorations.get_mut(&wl_surface.id()) {
                     let content_size = (geom_size.w, geom_size.h);
+                    // Invalidate cache if opacity changed (e.g. rule applied after first render)
+                    if deco.cached_shadow.as_ref().is_some_and(|s| (s.alpha() - opacity as f32).abs() > f32::EPSILON) {
+                        deco.cached_shadow = None;
+                    }
                     let shadow_elem = if let Some(shadow) = &mut deco.cached_shadow {
                         if deco.shadow_content_size != content_size {
                             deco.shadow_content_size = content_size;
@@ -796,7 +803,7 @@ pub fn compose_frame(
                             shader.clone(),
                             shadow_area,
                             None,
-                            1.0,
+                            opacity as f32,
                             vec![
                                 Uniform::new("u_window_rect", (
                                     r as f32, r as f32,

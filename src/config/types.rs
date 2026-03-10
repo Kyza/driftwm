@@ -353,6 +353,7 @@ pub struct WindowRule {
     pub decoration: DecorationMode,
     pub sharp_scale: bool,
     pub blur: bool,
+    pub opacity: Option<f64>,
 }
 
 /// Runtime rule state stored in a surface's data_map after matching.
@@ -363,6 +364,7 @@ pub struct AppliedWindowRule {
     pub decoration: DecorationMode,
     pub sharp_scale: bool,
     pub blur: bool,
+    pub opacity: Option<f64>,
 }
 
 impl From<&WindowRule> for AppliedWindowRule {
@@ -373,6 +375,7 @@ impl From<&WindowRule> for AppliedWindowRule {
             decoration: rule.decoration.clone(),
             sharp_scale: rule.sharp_scale,
             blur: rule.blur,
+            opacity: rule.opacity,
         }
     }
 }

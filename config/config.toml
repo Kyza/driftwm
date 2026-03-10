@@ -149,3 +149,7 @@ decoration = "server"
 [[window_rules]]
 app_id = "swaync-control-center"
 blur = true
+
+[[window_rules]]
+app_id = "swaync-notification-window"
+blur = true

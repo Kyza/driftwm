@@ -253,6 +253,7 @@
 #   decoration  — "client" (default), "server", or "none" (borderless)
 #   sharp_scale — false: keep rendering at native scale when zoomed out (default: true)
 #   blur        — true: blur background behind this window (default: false)
+#   opacity     — 0.0–1.0: window transparency (default: 1.0, fully opaque)
 #
 # [[window_rules]]
 # app_id = "my-widget"
@@ -266,9 +267,10 @@
 # app_id = "calendar-term"
 # sharp_scale = false
 #
-# # Blurred background behind notification widget
+# # Blurred terminal
 # [[window_rules]]
-# app_id = "drift-notif"
+# app_id = "Alacritty"
+# opacity = 0.85
 # blur = true
 #
 # # Hide iced/libcosmic utility windows (same app_id as main window)
