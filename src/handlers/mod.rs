@@ -143,12 +143,7 @@ delegate_dmabuf!(DriftWm);
 delegate_viewporter!(DriftWm);
 
 impl FractionalScaleHandler for DriftWm {
-    fn new_fractional_scale(&mut self, _surface: WlSurface) {
-        // Intentionally empty. Adjusted scale is sent via apply_sharp_scale
-        // (debounced timer) after zoom settles. Sending here would also hit
-        // layer-shell surfaces (fuzzel, waybar) which should always use
-        // native output_scale.
-    }
+    fn new_fractional_scale(&mut self, _surface: WlSurface) {}
 }
 
 delegate_fractional_scale!(DriftWm);

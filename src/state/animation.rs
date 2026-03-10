@@ -4,7 +4,6 @@ use smithay::input::pointer::CursorImageStatus;
 use smithay::utils::{Logical, Point};
 
 use driftwm::canvas::{self, CanvasPos};
-use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::wlr_layer::Layer as WlrLayer;
 
 use smithay::output::Output;
@@ -248,9 +247,6 @@ impl DriftWm {
         if dz.abs() < 0.001 {
             self.set_zoom(target);
             self.set_zoom_target(None);
-            if let Some(output) = self.active_output() {
-                self.schedule_sharp_scale(&output);
-            }
         } else {
             self.set_zoom(old_zoom + dz * factor);
         }
@@ -437,16 +433,13 @@ impl DriftWm {
         let factor = self.animation_factor(dt);
 
         let dz = target - old_zoom;
-        let settled;
         {
             let mut os = output_state(output);
             if dz.abs() < 0.001 {
                 os.zoom = target;
                 os.zoom_target = None;
-                settled = true;
             } else {
                 os.zoom = old_zoom + dz * factor;
-                settled = false;
             }
         }
 
@@ -510,80 +503,5 @@ impl DriftWm {
             }
         }
 
-        if settled {
-            self.schedule_sharp_scale(output);
-        }
     }
-
-    // ── Sharp-at-rest fractional scale ──────────────────────────────────
-
-    /// Schedule a debounced sharp-scale update after zoom settles.
-    pub fn schedule_sharp_scale(&mut self, output: &Output) {
-        self.cancel_sharp_scale(output);
-        let output_clone = output.clone();
-        let token = self.loop_handle.insert_source(
-            smithay::reexports::calloop::timer::Timer::from_duration(
-                Duration::from_millis(150),
-            ),
-            move |_, _, data: &mut DriftWm| {
-                data.apply_sharp_scale(&output_clone);
-                smithay::reexports::calloop::timer::TimeoutAction::Drop
-            },
-        );
-        if let Ok(token) = token {
-            super::output_state(output).sharp_scale_timer = Some(token);
-        }
-    }
-
-    /// Apply preferred fractional scale to all visible windows on this output.
-    pub fn apply_sharp_scale(&mut self, output: &Output) {
-        let (zoom, camera) = {
-            let mut os = super::output_state(output);
-            os.sharp_scale_timer = None;
-            if os.zoom_target.is_some() {
-                return;
-            }
-            (os.zoom, os.camera)
-        };
-        let effective = effective_fractional_scale(output, zoom);
-
-        let output_size = super::output_logical_size(output);
-        let visible = canvas::visible_canvas_rect(camera.to_i32_round(), output_size, zoom);
-
-        for window in self.space.elements() {
-            let Some(loc) = self.space.element_location(window) else {
-                continue;
-            };
-            let size = window.geometry().size;
-            let win_rect = smithay::utils::Rectangle::new(loc, size);
-            if !visible.overlaps(win_rect) {
-                continue;
-            }
-            let Some(surface) = window.wl_surface() else {
-                continue;
-            };
-            if driftwm::config::applied_rule(&surface).is_some_and(|r| !r.sharp_scale) {
-                continue;
-            }
-            smithay::wayland::compositor::with_states(&surface, |states| {
-                smithay::wayland::fractional_scale::with_fractional_scale(states, |fs| {
-                    fs.set_preferred_scale(effective);
-                });
-            });
-        }
-    }
-
-    /// Cancel a pending sharp-scale timer on this output.
-    pub fn cancel_sharp_scale(&mut self, output: &Output) {
-        if let Some(token) = super::output_state(output).sharp_scale_timer.take() {
-            self.loop_handle.remove(token);
-        }
-    }
-}
-
-/// Compute the effective fractional scale for a window on `output` at `zoom`.
-/// Capped at the output's native scale to prevent buffer explosion at zoom > 1.0.
-pub(crate) fn effective_fractional_scale(output: &Output, zoom: f64) -> f64 {
-    let output_scale = output.current_scale().fractional_scale();
-    (output_scale * zoom).min(output_scale)
 }

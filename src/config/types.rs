@@ -351,7 +351,6 @@ pub struct WindowRule {
     pub widget: bool,
     pub no_focus: bool,
     pub decoration: DecorationMode,
-    pub sharp_scale: bool,
     pub blur: bool,
     pub opacity: Option<f64>,
 }
@@ -362,7 +361,6 @@ pub struct AppliedWindowRule {
     pub widget: bool,
     pub no_focus: bool,
     pub decoration: DecorationMode,
-    pub sharp_scale: bool,
     pub blur: bool,
     pub opacity: Option<f64>,
 }
@@ -373,7 +371,6 @@ impl From<&WindowRule> for AppliedWindowRule {
             widget: rule.widget,
             no_focus: rule.no_focus,
             decoration: rule.decoration.clone(),
-            sharp_scale: rule.sharp_scale,
             blur: rule.blur,
             opacity: rule.opacity,
         }

@@ -251,7 +251,6 @@
 #   widget      — true: pinned (immovable), below normal windows, excluded from navigation (default: false)
 #   no_focus    — true: completely inert to input — clicks/scrolls pass through (default: false)
 #   decoration  — "client" (default), "server", or "none" (borderless)
-#   sharp_scale — false: keep rendering at native scale when zoomed out (default: true)
 #   blur        — true: blur background behind this window (default: false)
 #   opacity     — 0.0–1.0: window transparency (default: 1.0, fully opaque)
 #
@@ -261,11 +260,6 @@
 # widget = true
 # no_focus = true
 # decoration = "none"
-#
-# # Keep terminal at native resolution regardless of zoom level
-# [[window_rules]]
-# app_id = "calendar-term"
-# sharp_scale = false
 #
 # # Blurred terminal
 # [[window_rules]]
