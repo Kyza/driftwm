@@ -103,6 +103,8 @@ impl CompositorHandler for DriftWm {
         // behind rounded corners. Some CSD apps (e.g. LibreOffice/GTK3) declare the
         // full rect as opaque while rendering transparent corner pixels, causing black
         // artifacts where the damage tracker skips background redraws.
+        // NOTE: only effective for ARGB buffers — XRGB buffers are handled in
+        // RoundedCornerElement::opaque_regions() at render time.
         if !self.decorations.contains_key(&surface.id()) {
             with_states(surface, |states| {
                 if states.data_map.get::<XdgToplevelSurfaceData>().is_none() {

@@ -13,6 +13,9 @@ autostart = [
     "swayidle -w timeout 300 'brightnessctl -s set 10%' resume 'brightnessctl -r' timeout 330 '~/Documents/work/scripts/driftwm/extras/scripts/lock.sh' timeout 600 'systemctl suspend' before-sleep '~/Documents/work/scripts/driftwm/extras/scripts/lock.sh'",
 ]
 
+[env]
+QT_WAYLAND_DISABLE_WINDOWDECORATION = "1"
+
 [input.keyboard]
 layout = "us,ru"
 options = "grp:win_space_toggle"

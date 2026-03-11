@@ -136,11 +136,13 @@ pub fn compile_corner_clip_shader(renderer: &mut GlesRenderer) -> Option<GlesTex
     }
 }
 
-/// Wrapper element that applies a rounded-corner clipping shader to a CSD window's root surface.
+/// Wrapper element that applies a rounded-corner clipping shader to a window's root surface.
 pub struct RoundedCornerElement {
     inner: WaylandSurfaceRenderElement<GlesRenderer>,
     shader: GlesTexProgram,
     uniforms: Vec<Uniform<'static>>,
+    corner_radius: f64,
+    clip_top: bool,
 }
 
 impl RoundedCornerElement {
@@ -148,8 +150,10 @@ impl RoundedCornerElement {
         inner: WaylandSurfaceRenderElement<GlesRenderer>,
         shader: GlesTexProgram,
         uniforms: Vec<Uniform<'static>>,
+        corner_radius: f64,
+        clip_top: bool,
     ) -> Self {
-        Self { inner, shader, uniforms }
+        Self { inner, shader, uniforms, corner_radius, clip_top }
     }
 }
 
@@ -168,10 +172,26 @@ impl Element for RoundedCornerElement {
     fn opaque_regions(
         &self, scale: Scale<f64>,
     ) -> OpaqueRegions<i32, Physical> {
-        // The commit handler in compositor.rs already trims corner squares from
-        // opaque regions, so delegating here is correct and avoids forcing
-        // full background redraws behind the entire window.
-        self.inner.opaque_regions(scale)
+        let regions = self.inner.opaque_regions(scale);
+        if regions.is_empty() || self.corner_radius <= 0.0 {
+            return regions;
+        }
+        let geo = self.geometry(scale);
+        // +1 to cover anti-aliased fringe from smoothstep
+        let r = (self.corner_radius * scale.x).ceil() as i32 + 1;
+        let (w, h) = (geo.size.w, geo.size.h);
+        if w <= 2 * r || h <= 2 * r {
+            return regions;
+        }
+        let mut corners = Vec::with_capacity(4);
+        if self.clip_top {
+            corners.push(Rectangle::new((0, 0).into(), (r, r).into()));
+            corners.push(Rectangle::new((w - r, 0).into(), (r, r).into()));
+        }
+        corners.push(Rectangle::new((0, h - r).into(), (r, r).into()));
+        corners.push(Rectangle::new((w - r, h - r).into(), (r, r).into()));
+        let rects: Vec<_> = regions.into_iter().collect();
+        Rectangle::subtract_rects_many_in_place(rects, corners).into_iter().collect()
     }
     fn alpha(&self) -> f32 { self.inner.alpha() }
     fn kind(&self) -> Kind { self.inner.kind() }
@@ -874,7 +894,7 @@ pub fn compose_frame(
                                 Uniform::new("u_clip_shadow", 0.0f32),
                             ];
                             target.push(OutputRenderElements::CsdWindow(RescaleRenderElement::from_element(
-                                RoundedCornerElement::new(elem, shader.clone(), uniforms),
+                                RoundedCornerElement::new(elem, shader.clone(), uniforms, radius as f64, false),
                                 Point::<i32, Physical>::from((0, 0)),
                                 zoom,
                             )));
@@ -986,7 +1006,7 @@ pub fn compose_frame(
                             Uniform::new("u_clip_shadow", 1.0f32),
                         ];
                         target.push(OutputRenderElements::CsdWindow(RescaleRenderElement::from_element(
-                            RoundedCornerElement::new(elem, shader.clone(), uniforms),
+                            RoundedCornerElement::new(elem, shader.clone(), uniforms, radius as f64, true),
                             Point::<i32, Physical>::from((0, 0)),
                             zoom,
                         )));
