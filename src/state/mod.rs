@@ -66,6 +66,7 @@ use crate::backend::Backend;
 use crate::input::gestures::GestureState;
 use driftwm::canvas::MomentumState;
 use driftwm::config::Config;
+use driftwm::window_ext::WindowExt;
 
 /// All animation frames for a loaded xcursor, at a single nominal size.
 pub struct CursorFrames {
@@ -614,9 +615,71 @@ impl DriftWm {
             self.space.raise_element(&w, false);
         }
 
+        // Parent-child stacking: raise children after their parents so
+        // they always appear on top. Works naturally for nested hierarchies.
+        let parented: Vec<Window> = self
+            .space
+            .elements()
+            .filter(|w| w.parent_surface().is_some())
+            .cloned()
+            .collect();
+        for child in parented {
+            self.space.raise_element(&child, false);
+        }
+
         for fs in self.fullscreen.values() {
             self.space.raise_element(&fs.window, false);
         }
+    }
+
+    /// Find the Window in space whose wl_surface matches the given one.
+    pub fn window_for_surface(&self, surface: &WlSurface) -> Option<Window> {
+        self.space
+            .elements()
+            .find(|w| w.wl_surface().as_deref() == Some(surface))
+            .cloned()
+    }
+
+    /// Get the innermost modal child of a window (for focus redirect).
+    /// Recursively chases modal chains (e.g. file picker → overwrite confirm).
+    /// Capped at 10 iterations to guard against circular parents.
+    pub fn topmost_modal_child(&self, window: &Window) -> Option<Window> {
+        let parent_surface = window.wl_surface()?;
+        let child = self.space
+            .elements()
+            .rfind(|w| {
+                w.parent_surface().as_ref() == Some(&*parent_surface) && w.is_modal()
+            })
+            .cloned()?;
+        self.topmost_modal_child_inner(&child, 9).or(Some(child))
+    }
+
+    fn topmost_modal_child_inner(&self, window: &Window, depth: u8) -> Option<Window> {
+        if depth == 0 { return None; }
+        let parent_surface = window.wl_surface()?;
+        let child = self.space
+            .elements()
+            .rfind(|w| {
+                w.parent_surface().as_ref() == Some(&*parent_surface) && w.is_modal()
+            })
+            .cloned()?;
+        self.topmost_modal_child_inner(&child, depth - 1).or(Some(child))
+    }
+
+    /// Raise a window and set keyboard focus, with modal focus redirect.
+    /// If the window has a modal child, focus goes to that child instead.
+    pub fn raise_and_focus(&mut self, window: &Window, serial: smithay::utils::Serial) {
+        self.space.raise_element(window, true);
+        self.enforce_below_windows();
+
+        // Resolve focus target before borrowing keyboard (modal redirect)
+        let focus_surface = self
+            .topmost_modal_child(window)
+            .or(Some(window.clone()))
+            .and_then(|w| w.wl_surface().map(|s| FocusTarget(s.into_owned())));
+
+        let keyboard = self.seat.get_keyboard().unwrap();
+        keyboard.set_focus(self, focus_surface, serial);
     }
 
     /// Find a mapped window wrapping the given X11 surface.

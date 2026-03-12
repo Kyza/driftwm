@@ -151,14 +151,8 @@ impl DriftWm {
                             return;
                         }
                         DecorationHit::TitleBar if !is_widget => {
-                            // Focus + raise + start move grab
-                            self.space.raise_element(&window, true);
-                            self.enforce_below_windows();
-                            keyboard.set_focus(
-                                self,
-                                Some(FocusTarget(wl_surface)),
-                                serial,
-                            );
+                            // Focus + raise (with modal redirect) + start move grab
+                            self.raise_and_focus(&window, serial);
                             let initial_window_location =
                                 self.space.element_location(&window).unwrap();
                             let start_data = GrabStartData {
@@ -276,11 +270,7 @@ impl DriftWm {
                                 .and_then(|s| config::applied_rule(&s))
                                 .is_some_and(|r| r.no_focus)
                         {
-                            self.space.raise_element(&window, true);
-                            self.enforce_below_windows();
-                            if let Some(wl_surface) = window.wl_surface().map(|s| s.into_owned()) {
-                                keyboard.set_focus(self, Some(FocusTarget(wl_surface)), serial);
-                            }
+                            self.raise_and_focus(&window, serial);
                             self.execute_action(&config::Action::ToggleFullscreen);
                             return;
                         }
@@ -305,14 +295,8 @@ impl DriftWm {
                     .and_then(|s| config::applied_rule(&s))
                     .is_some_and(|r| r.widget);
                 if !is_widget {
-                    // Normal window: raise + focus
-                    self.space.raise_element(window, true);
-                    self.enforce_below_windows();
-                    keyboard.set_focus(
-                        self,
-                        window.wl_surface().map(|s| FocusTarget(s.into_owned())),
-                        serial,
-                    );
+                    // Normal window: raise + focus (with modal redirect)
+                    self.raise_and_focus(window, serial);
                 } else if let Some((focus, _)) = self.canvas_layer_under(pos) {
                     // Widget window but canvas layer is above it: focus the layer
                     keyboard.set_focus(self, Some(focus), serial);

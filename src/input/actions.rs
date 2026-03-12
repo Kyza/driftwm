@@ -418,15 +418,8 @@ impl DriftWm {
                             (center_y - geo.size.h as f64 / 2.0) as i32,
                         ));
                         self.space.map_element(window.clone(), new_loc, true);
-                        self.space.raise_element(&window, true);
-                        self.enforce_below_windows();
                         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-                        let keyboard = self.seat.get_keyboard().unwrap();
-                        keyboard.set_focus(
-                            self,
-                            window.wl_surface().map(|s| FocusTarget(s.into_owned())),
-                            serial,
-                        );
+                        self.raise_and_focus(&window, serial);
                     }
                 }
             }

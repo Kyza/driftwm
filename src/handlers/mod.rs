@@ -203,11 +203,8 @@ impl XdgActivationHandler for DriftWm {
                 ) >= 0.5
             });
             if mostly_visible {
-                self.space.raise_element(&window, true);
-                self.enforce_below_windows();
                 let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-                let keyboard = self.seat.get_keyboard().unwrap();
-                keyboard.set_focus(self, Some(FocusTarget(surface)), serial);
+                self.raise_and_focus(&window, serial);
             } else {
                 self.navigate_to_window(&window, false);
             }
@@ -302,8 +299,19 @@ delegate_content_type!(DriftWm);
 use smithay::wayland::shell::xdg::dialog::XdgDialogHandler;
 use smithay::delegate_xdg_dialog;
 
-// TODO: implement modal_changed() to block parent focus/input while modal child exists
-impl XdgDialogHandler for DriftWm {}
+impl XdgDialogHandler for DriftWm {
+    fn modal_changed(&mut self, toplevel: ToplevelSurface, is_modal: bool) {
+        if is_modal {
+            // Redirect focus from parent to this modal dialog
+            let wl_surface = toplevel.wl_surface().clone();
+            let window = self.window_for_surface(&wl_surface);
+            if let Some(window) = window {
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                self.raise_and_focus(&window, serial);
+            }
+        }
+    }
+}
 delegate_xdg_dialog!(DriftWm);
 
 use smithay::wayland::shell::xdg::decoration::XdgDecorationHandler;

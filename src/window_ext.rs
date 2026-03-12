@@ -1,4 +1,5 @@
 use smithay::desktop::Window;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Rectangle, Size};
 
 /// Extension trait on `Window` for operations that differ per window type
@@ -12,6 +13,12 @@ pub trait WindowExt {
     fn wants_ssd(&self) -> bool;
     fn enter_fullscreen_configure(&self, size: Size<i32, Logical>);
     fn exit_fullscreen_configure(&self, saved_size: Size<i32, Logical>);
+    /// The parent surface set via xdg_toplevel.set_parent (Wayland) or
+    /// WM_TRANSIENT_FOR (X11). Returns None for X11 (follow-up).
+    fn parent_surface(&self) -> Option<WlSurface>;
+    /// Whether this is a modal dialog (xdg-dialog-v1). Non-modal parented
+    /// windows (palettes, find dialogs) return false.
+    fn is_modal(&self) -> bool;
 }
 
 impl WindowExt for Window {
@@ -90,6 +97,35 @@ impl WindowExt for Window {
         } else if let Some(x11) = self.x11_surface() {
             x11.set_fullscreen(false).ok();
             x11.configure(Rectangle::new(x11.geometry().loc, saved_size)).ok();
+        }
+    }
+
+    fn parent_surface(&self) -> Option<WlSurface> {
+        if let Some(toplevel) = self.toplevel() {
+            smithay::wayland::compositor::with_states(toplevel.wl_surface(), |states| {
+                states
+                    .data_map
+                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                    .and_then(|d| d.lock().ok())
+                    .and_then(|guard| guard.parent.clone())
+            })
+        } else {
+            // X11 transient-for returns a window ID, not a WlSurface — follow-up
+            None
+        }
+    }
+
+    fn is_modal(&self) -> bool {
+        if let Some(toplevel) = self.toplevel() {
+            smithay::wayland::compositor::with_states(toplevel.wl_surface(), |states| {
+                states
+                    .data_map
+                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                    .and_then(|d| d.lock().ok())
+                    .is_some_and(|guard| guard.modal)
+            })
+        } else {
+            false
         }
     }
 }

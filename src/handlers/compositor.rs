@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use crate::grabs::{ResizeState, has_left, has_top};
 use crate::handlers::layer_shell::LayerDestroyedMarker;
 use crate::state::{ClientState, DriftWm, FocusTarget};
+use driftwm::window_ext::WindowExt;
 use smithay::input::pointer::CursorImageStatus;
 use smithay::utils::Rectangle;
 use smithay::xwayland::XWaylandClientData;
@@ -260,6 +261,16 @@ impl CompositorHandler for DriftWm {
                             && let Some((x, y)) = rule.position
                         {
                             (x - geo.size.w / 2, -y - geo.size.h / 2)
+                        } else if let Some(parent_surface) = window.parent_surface()
+                            && let Some(parent_win) = self.window_for_surface(&parent_surface)
+                            && let Some(parent_loc) = self.space.element_location(&parent_win)
+                        {
+                            // Center child dialog on parent window
+                            let parent_size = parent_win.geometry().size;
+                            (
+                                parent_loc.x + parent_size.w / 2 - geo.size.w / 2,
+                                parent_loc.y + parent_size.h / 2 - geo.size.h / 2,
+                            )
                         } else {
                             let output_geo = {
                                 let output = self.active_output();

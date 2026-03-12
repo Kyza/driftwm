@@ -2,6 +2,7 @@ use std::cell::RefCell;
 
 use crate::grabs::{MoveSurfaceGrab, ResizeState, ResizeSurfaceGrab};
 use crate::state::{DriftWm, FocusTarget, output_state};
+use driftwm::window_ext::WindowExt;
 use smithay::{
     delegate_xdg_shell,
     desktop::{
@@ -152,17 +153,23 @@ impl XdgShellHandler for DriftWm {
             .find(|w| w.wl_surface().as_deref() == Some(&wl_surface))
             .cloned();
         if let Some(ref window) = window {
-            // Clear keyboard focus if this was the focused window
+            // If this window had a parent, focus the parent (or its modal child)
+            let parent_focus = window.parent_surface().and_then(|ps| {
+                let parent = self.window_for_surface(&ps)?;
+                // If parent has another modal child, focus that instead
+                let target = self.topmost_modal_child(&parent)
+                    .filter(|mc| mc != window)
+                    .unwrap_or(parent);
+                target.wl_surface().map(|s| FocusTarget(s.into_owned()))
+            });
+
             let keyboard = self.seat.get_keyboard().unwrap();
             if keyboard
                 .current_focus()
                 .is_some_and(|f| f.0 == wl_surface)
             {
-                keyboard.set_focus(
-                    self,
-                    None::<FocusTarget>,
-                    smithay::utils::SERIAL_COUNTER.next_serial(),
-                );
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                keyboard.set_focus(self, parent_focus, serial);
             }
             // If the destroyed window was fullscreen, restore viewport
             let fs_output = self.fullscreen.iter()

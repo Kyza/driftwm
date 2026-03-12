@@ -4,20 +4,17 @@ use smithay::{
     utils::Point,
     wayland::seat::WaylandFocus,
 };
+use driftwm::window_ext::WindowExt;
 
-use super::{DriftWm, FocusTarget};
+use super::DriftWm;
 
 impl DriftWm {
     /// Navigate the viewport to center on a window: raise, focus, animate camera.
     /// When `reset_zoom` is true, zoom animates to 1.0 (intentional navigation).
     /// Otherwise preserves current zoom, or restores saved zoom if leaving overview.
     pub fn navigate_to_window(&mut self, window: &Window, reset_zoom: bool) {
-        self.space.raise_element(window, true);
-        self.enforce_below_windows();
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-        let keyboard = self.seat.get_keyboard().unwrap();
-        let focus = window.wl_surface().map(|s| FocusTarget(s.into_owned()));
-        keyboard.set_focus(self, focus, serial);
+        self.raise_and_focus(window, serial);
 
         let target_zoom = if reset_zoom {
             self.set_overview_return(None);
@@ -82,6 +79,11 @@ impl DriftWm {
             .find(|w| w.wl_surface().as_deref() == Some(surface))
             .cloned();
         if let Some(window) = window {
+            // Modal dialogs don't enter focus history — Alt-Tab navigates to
+            // the parent instead, and focus redirect handles the rest.
+            if window.is_modal() {
+                return;
+            }
             self.focus_history.retain(|w| w != &window);
             self.focus_history.insert(0, window);
         }
