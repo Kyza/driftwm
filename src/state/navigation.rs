@@ -31,15 +31,18 @@ impl DriftWm {
 
         let window_loc = self.space.element_location(window).unwrap_or_default();
         let window_size = window.geometry().size;
+        let bar = self.window_ssd_bar(window);
         let viewport_size = self.get_viewport_size();
         let target = driftwm::canvas::camera_to_center_window(
-            window_loc, window_size, viewport_size, target_zoom,
+            window_loc, window_size, viewport_size, target_zoom, bar,
         );
 
-        let window_center = Point::from((
-            window_loc.x as f64 + window_size.w as f64 / 2.0,
-            window_loc.y as f64 + window_size.h as f64 / 2.0,
-        ));
+        let window_center = self.window_visual_center(window).unwrap_or_else(|| {
+            Point::from((
+                window_loc.x as f64 + window_size.w as f64 / 2.0,
+                window_loc.y as f64 + window_size.h as f64 / 2.0,
+            ))
+        });
         self.with_output_state(|os| {
             os.momentum.stop();
             os.zoom_animation_center = Some(window_center);

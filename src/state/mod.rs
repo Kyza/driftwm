@@ -13,6 +13,7 @@ use smithay::{
         wayland_server::{
             DisplayHandle,
             backend::{ClientData, ClientId, DisconnectReason},
+            Resource,
             protocol::wl_surface::WlSurface,
         },
     },
@@ -1083,6 +1084,25 @@ impl DriftWm {
         self.active_output()
             .map(|o| output_logical_size(&o))
             .unwrap_or((1, 1).into())
+    }
+
+    /// SSD title bar height for a window (0 for CSD/borderless).
+    pub fn window_ssd_bar(&self, window: &Window) -> i32 {
+        window
+            .wl_surface()
+            .filter(|s| self.decorations.contains_key(&s.id()))
+            .map_or(0, |_| driftwm::config::DecorationConfig::TITLE_BAR_HEIGHT)
+    }
+
+    /// Visual center of a window, accounting for SSD title bar above content.
+    pub fn window_visual_center(&self, window: &Window) -> Option<Point<f64, Logical>> {
+        let loc = self.space.element_location(window)?;
+        let size = window.geometry().size;
+        let bar = self.window_ssd_bar(window) as f64;
+        Some(Point::from((
+            loc.x as f64 + size.w as f64 / 2.0,
+            loc.y as f64 - bar + (size.h as f64 + bar) / 2.0,
+        )))
     }
 
     /// Write viewport center + zoom to `$XDG_RUNTIME_DIR/driftwm/state` if changed.

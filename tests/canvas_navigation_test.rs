@@ -13,7 +13,7 @@ fn camera_to_center_window_standard_window() {
     let loc = Point::<i32, Logical>::from((100, 100));
     let win_size = Size::<i32, Logical>::from((200, 200));
     let vp_size = Size::<i32, Logical>::from((1920, 1080));
-    let camera = camera_to_center_window(loc, win_size, vp_size, 1.0);
+    let camera = camera_to_center_window(loc, win_size, vp_size, 1.0, 0);
     assert!((camera.x - (-760.0)).abs() < 1e-10, "camera.x should be -760, got {}", camera.x);
     assert!((camera.y - (-340.0)).abs() < 1e-10, "camera.y should be -340, got {}", camera.y);
 }
@@ -26,7 +26,7 @@ fn camera_to_center_window_small_viewport() {
     let loc = Point::<i32, Logical>::from((0, 0));
     let win_size = Size::<i32, Logical>::from((100, 100));
     let vp_size = Size::<i32, Logical>::from((800, 600));
-    let camera = camera_to_center_window(loc, win_size, vp_size, 1.0);
+    let camera = camera_to_center_window(loc, win_size, vp_size, 1.0, 0);
     assert!((camera.x - (-350.0)).abs() < 1e-10, "camera.x should be -350, got {}", camera.x);
     assert!((camera.y - (-250.0)).abs() < 1e-10, "camera.y should be -250, got {}", camera.y);
 }
@@ -39,7 +39,7 @@ fn camera_to_center_window_far_offset_window() {
     let loc = Point::<i32, Logical>::from((1000, 2000));
     let win_size = Size::<i32, Logical>::from((400, 300));
     let vp_size = Size::<i32, Logical>::from((1920, 1080));
-    let camera = camera_to_center_window(loc, win_size, vp_size, 1.0);
+    let camera = camera_to_center_window(loc, win_size, vp_size, 1.0, 0);
     assert!((camera.x - 240.0).abs() < 1e-10, "camera.x should be 240, got {}", camera.x);
     assert!((camera.y - 1610.0).abs() < 1e-10, "camera.y should be 1610, got {}", camera.y);
 }
@@ -52,7 +52,7 @@ fn camera_to_center_window_already_centered_returns_zero() {
     let loc = Point::<i32, Logical>::from((860, 440));
     let win_size = Size::<i32, Logical>::from((200, 200));
     let vp_size = Size::<i32, Logical>::from((1920, 1080));
-    let camera = camera_to_center_window(loc, win_size, vp_size, 1.0);
+    let camera = camera_to_center_window(loc, win_size, vp_size, 1.0, 0);
     assert!((camera.x).abs() < 1e-10, "camera.x should be 0 for already-centered window, got {}", camera.x);
     assert!((camera.y).abs() < 1e-10, "camera.y should be 0 for already-centered window, got {}", camera.y);
 }
@@ -66,7 +66,7 @@ fn camera_to_center_window_with_zoom_half() {
     let loc = Point::<i32, Logical>::from((0, 0));
     let win_size = Size::<i32, Logical>::from((100, 100));
     let vp_size = Size::<i32, Logical>::from((1920, 1080));
-    let camera = camera_to_center_window(loc, win_size, vp_size, 0.5);
+    let camera = camera_to_center_window(loc, win_size, vp_size, 0.5, 0);
     assert!((camera.x - (-1870.0)).abs() < 1e-10, "camera.x should be -1870, got {}", camera.x);
     assert!((camera.y - (-1030.0)).abs() < 1e-10, "camera.y should be -1030, got {}", camera.y);
 }

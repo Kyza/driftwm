@@ -138,10 +138,9 @@ impl DriftWm {
                         })
                         .min_by(|a, b| {
                             let dist = |w: &smithay::desktop::Window| {
-                                let loc = self.space.element_location(w).unwrap_or_default();
-                                let size = w.geometry().size;
-                                let dx = loc.x as f64 + size.w as f64 / 2.0 - center_x;
-                                let dy = loc.y as f64 + size.h as f64 / 2.0 - center_y;
+                                let c = self.window_visual_center(w).unwrap_or_default();
+                                let dx = c.x - center_x;
+                                let dy = c.y - center_y;
                                 dx * dx + dy * dy
                             };
                             dist(a).partial_cmp(&dist(b)).unwrap()
@@ -181,10 +180,12 @@ impl DriftWm {
                     if canvas::visible_fraction(loc, size, camera, viewport_size, zoom)
                         >= 0.5
                     {
-                        let center = Point::from((
-                            loc.x as f64 + size.w as f64 / 2.0,
-                            loc.y as f64 + size.h as f64 / 2.0,
-                        ));
+                        let center = self.window_visual_center(w).unwrap_or_else(|| {
+                            Point::from((
+                                loc.x as f64 + size.w as f64 / 2.0,
+                                loc.y as f64 + size.h as f64 / 2.0,
+                            ))
+                        });
                         (center, Some(NavTarget::Window(w.clone())))
                     } else {
                         (viewport_center, None)
@@ -201,10 +202,12 @@ impl DriftWm {
                     let size = w.geometry().size;
                     let closest = canvas::closest_point_on_rect(origin, loc, size);
                     let point = if closest == origin {
-                        Point::from((
-                            loc.x as f64 + size.w as f64 / 2.0,
-                            loc.y as f64 + size.h as f64 / 2.0,
-                        ))
+                        self.window_visual_center(w).unwrap_or_else(|| {
+                            Point::from((
+                                loc.x as f64 + size.w as f64 / 2.0,
+                                loc.y as f64 + size.h as f64 / 2.0,
+                            ))
+                        })
                     } else {
                         closest
                     };

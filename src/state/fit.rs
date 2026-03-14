@@ -5,8 +5,7 @@ use smithay::{
     wayland::{compositor::with_states, seat::WaylandFocus},
 };
 
-use smithay::reexports::wayland_server::Resource;
-use driftwm::config::{self, DecorationConfig};
+use driftwm::config;
 use driftwm::window_ext::WindowExt;
 use super::DriftWm;
 
@@ -57,30 +56,42 @@ impl DriftWm {
             }
         });
 
+        // Compute fit size at zoom=1.0 — navigate_to_window will animate there
         let viewport = self.get_viewport_size();
-        let zoom = self.zoom();
-        let camera = self.camera();
         let gap = self.config.snap_gap;
+        let bar = self.window_ssd_bar(window);
 
-        // SSD title bar sits above the content area — subtract from available height
-        let has_ssd = self.decorations.contains_key(&wl_surface.id());
-        let bar = if has_ssd { DecorationConfig::TITLE_BAR_HEIGHT } else { 0 };
-
-        let target_w = (viewport.w as f64 / zoom - 2.0 * gap) as i32;
-        let target_h = (viewport.h as f64 / zoom - 2.0 * gap) as i32 - bar;
+        let target_w = viewport.w - (2.0 * gap) as i32;
+        let target_h = viewport.h - (2.0 * gap) as i32 - bar;
         let target_size = Size::from((target_w, target_h));
 
-        // Center visual whole (bar + content) so gaps to viewport edges are even
-        let center_x = camera.x + viewport.w as f64 / (2.0 * zoom);
-        let center_y = camera.y + viewport.h as f64 / (2.0 * zoom);
-        let total_h = target_h + bar;
+        // Camera that centers the fitted window at zoom=1.0:
+        // visual_center = old center, camera = visual_center - viewport/2
+        let center = self.window_visual_center(window).unwrap_or_default();
+        let target_camera = Point::from((
+            center.x - viewport.w as f64 / 2.0,
+            center.y - viewport.h as f64 / 2.0,
+        ));
+
+        // Window location: gap from the target camera edges
         let new_loc = Point::from((
-            (center_x - target_w as f64 / 2.0) as i32,
-            (center_y - total_h as f64 / 2.0) as i32 + bar,
+            target_camera.x as i32 + gap as i32,
+            target_camera.y as i32 + gap as i32 + bar,
         ));
 
         window.enter_fit_configure(target_size);
         self.space.map_element(window.clone(), new_loc, false);
+
+        // Raise, focus, animate camera + zoom to 1.0
+        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+        self.raise_and_focus(window, serial);
+        self.set_overview_return(None);
+        self.with_output_state(|os| {
+            os.momentum.stop();
+            os.zoom_animation_center = Some(center);
+            os.camera_target = Some(target_camera);
+            os.zoom_target = Some(1.0);
+        });
     }
 
     pub fn unfit_window(&mut self, window: &Window) {
@@ -103,15 +114,13 @@ impl DriftWm {
 
         let Some(saved_size) = saved_size else { return };
 
-        // Center content area the same way CenterWindow/navigate_to_window does
-        let viewport = self.get_viewport_size();
-        let zoom = self.zoom();
-        let camera = self.camera();
-        let center_x = camera.x + viewport.w as f64 / (2.0 * zoom);
-        let center_y = camera.y + viewport.h as f64 / (2.0 * zoom);
+        // Resize in-place: keep visual center, compute new loc from saved size
+        let center = self.window_visual_center(window).unwrap_or_default();
+        let bar = self.window_ssd_bar(window);
+        let total_h = saved_size.h + bar;
         let new_loc = Point::from((
-            (center_x - saved_size.w as f64 / 2.0) as i32,
-            (center_y - saved_size.h as f64 / 2.0) as i32,
+            (center.x - saved_size.w as f64 / 2.0) as i32,
+            (center.y - total_h as f64 / 2.0) as i32 + bar,
         ));
 
         window.exit_fit_configure(saved_size);

@@ -44,9 +44,11 @@ pub fn camera_to_center_window(
     window_size: Size<i32, Logical>,
     viewport_size: Size<i32, Logical>,
     zoom: f64,
+    bar: i32,
 ) -> Point<f64, Logical> {
     let window_center_x = window_loc.x as f64 + window_size.w as f64 / 2.0;
-    let window_center_y = window_loc.y as f64 + window_size.h as f64 / 2.0;
+    let bar_f = bar as f64;
+    let window_center_y = window_loc.y as f64 - bar_f + (window_size.h as f64 + bar_f) / 2.0;
     let viewport_center_x = viewport_size.w as f64 / (2.0 * zoom);
     let viewport_center_y = viewport_size.h as f64 / (2.0 * zoom);
     Point::from((
@@ -469,7 +471,7 @@ mod tests {
     fn center_window_zoom_1() {
         // 200x100 window at (300, 400), 1920x1080 viewport, zoom 1.0
         let cam = camera_to_center_window(
-            (300, 400).into(), (200, 100).into(), vp(1920, 1080), 1.0,
+            (300, 400).into(), (200, 100).into(), vp(1920, 1080), 1.0, 0,
         );
         // window center: (400, 450), viewport center offset: (960, 540)
         assert!((cam.x - (400.0 - 960.0)).abs() < 1e-9);
@@ -480,7 +482,7 @@ mod tests {
     fn center_window_zoomed_out() {
         // At zoom 0.5, viewport center = viewport_size / (2 * 0.5) = viewport_size
         let cam = camera_to_center_window(
-            (0, 0).into(), (100, 100).into(), vp(1000, 1000), 0.5,
+            (0, 0).into(), (100, 100).into(), vp(1000, 1000), 0.5, 0,
         );
         // window center: (50, 50), viewport center offset at 0.5: (1000, 1000)
         assert!((cam.x - (50.0 - 1000.0)).abs() < 1e-9);
