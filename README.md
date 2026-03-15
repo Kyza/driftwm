@@ -1,7 +1,7 @@
-<h1 align="center"><img alt="driftwm" src="assets/logo.jpg"></h1>
+<h1 align="center"><img alt="driftwm" src="assets/logo.jpg" width="400"></h1>
 <p align="center">A trackpad-first infinite canvas Wayland compositor.</p>
 <p align="center">
-    <a href="https://github.com/malbiruk/driftwm/blob/main/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/malbiruk/driftwm"></a>
+    <a href="https://github.com/malbiruk/driftwm/blob/main/LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue"></a>
     <a href="https://github.com/malbiruk/driftwm/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/malbiruk/driftwm?logo=github"></a>
 </p>
 
