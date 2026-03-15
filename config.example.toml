@@ -204,6 +204,7 @@
 # Threshold actions: center-nearest, center-window, home-toggle, zoom-to-fit, fit-window, exec <cmd>, etc.
 
 # Gesture thresholds — tune for your touchpad size.
+[gestures]
 # swipe_threshold = 12.0        # px cumulative distance before directional swipe fires
 # pinch_in_threshold = 0.85     # scale below which pinch-in fires (1.0 = no pinch)
 # pinch_out_threshold = 1.15    # scale above which pinch-out fires (1.0 = no pinch)
