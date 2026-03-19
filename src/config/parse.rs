@@ -133,6 +133,8 @@ pub fn parse_action(s: &str) -> Result<Action, String> {
 }
 
 /// Parse a mouse action string like "move-window" or "zoom".
+/// Continuous/grab actions are matched first; anything else falls through
+/// to `parse_action` so that any keyboard action works for click triggers.
 pub fn parse_mouse_action(s: &str) -> Result<MouseAction, String> {
     match s.trim() {
         "move-window" => Ok(MouseAction::MoveWindow),
@@ -140,9 +142,10 @@ pub fn parse_mouse_action(s: &str) -> Result<MouseAction, String> {
         "pan-viewport" => Ok(MouseAction::PanViewport),
         "zoom" => Ok(MouseAction::Zoom),
         "center-nearest" => Ok(MouseAction::CenterNearest),
-        "toggle-fullscreen" => Ok(MouseAction::ToggleFullscreen),
-        "fit-window" => Ok(MouseAction::FitWindow),
-        other => Err(format!("unknown mouse action: {other}")),
+        other => {
+            let action = parse_action(other)?;
+            Ok(MouseAction::Action(action))
+        }
     }
 }
 

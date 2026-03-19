@@ -178,7 +178,8 @@
 # Triggers: left, right, middle (buttons), trackpad-scroll, wheel-scroll
 # Merges with defaults. Use "none" to unbind.
 #
-# Mouse actions: move-window, resize-window, pan-viewport, zoom, center-nearest, toggle-fullscreen, fit-window
+# Mouse actions: move-window, resize-window, pan-viewport, zoom, center-nearest
+# Any keyboard action also works for button triggers: exec, close-window, toggle-fullscreen, etc.
 
 [mouse.on-window]
 # "alt+left" = "move-window"

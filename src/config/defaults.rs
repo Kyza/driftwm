@@ -343,14 +343,14 @@ pub(super) fn default_mouse_bindings(mod_key: ModKey) -> ContextBindings<MouseBi
                 modifiers: alt_only.clone(),
                 trigger: MouseTrigger::Button(BTN_MIDDLE),
             },
-            MouseAction::FitWindow,
+            MouseAction::Action(Action::FitWindow),
         ),
         (
             MouseBinding {
                 modifiers: m.clone(),
                 trigger: MouseTrigger::Button(BTN_MIDDLE),
             },
-            MouseAction::ToggleFullscreen,
+            MouseAction::Action(Action::ToggleFullscreen),
         ),
     ]);
 

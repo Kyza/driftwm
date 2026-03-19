@@ -20,7 +20,7 @@ use smithay::wayland::seat::WaylandFocus;
 
 use smithay::reexports::wayland_server::Resource;
 use driftwm::canvas::{self, CanvasPos, canvas_to_screen};
-use driftwm::config::{self, BindingContext, MouseAction};
+use driftwm::config::{self, Action, BindingContext, MouseAction};
 use driftwm::window_ext::WindowExt;
 use crate::decorations::DecorationHit;
 use crate::grabs::{MoveSurfaceGrab, NavigateGrab, PanGrab, ResizeState, ResizeSurfaceGrab};
@@ -101,7 +101,7 @@ impl DriftWm {
             if self.is_fullscreen() {
                 // In fullscreen the window fills the screen — treat as OnWindow
                 let fs_lookup = self.config.mouse_button_lookup_ctx(&mods, button, BindingContext::OnWindow);
-                if matches!(fs_lookup, Some(MouseAction::ToggleFullscreen) | Some(MouseAction::FitWindow)) {
+                if matches!(fs_lookup, Some(MouseAction::Action(Action::ToggleFullscreen | Action::FitWindow))) {
                     self.exit_fullscreen_remap_pointer(pos);
                     return;
                 } else if fs_lookup.is_some() {
@@ -274,23 +274,14 @@ impl DriftWm {
                         pointer.set_grab(self, grab, serial, Focus::Clear);
                         return;
                     }
-                    MouseAction::ToggleFullscreen => {
+                    MouseAction::Action(ref action) => {
                         if let Some((window, _)) =
                             self.space.element_under(pos).map(|(w, l)| (w.clone(), l))
                         {
                             self.raise_and_focus(&window, serial);
-                            self.execute_action(&config::Action::ToggleFullscreen);
-                            return;
                         }
-                    }
-                    MouseAction::FitWindow => {
-                        if let Some((window, _)) =
-                            self.space.element_under(pos).map(|(w, l)| (w.clone(), l))
-                        {
-                            self.raise_and_focus(&window, serial);
-                            self.execute_action(&config::Action::FitWindow);
-                            return;
-                        }
+                        self.execute_action(action);
+                        return;
                     }
                     MouseAction::Zoom => {} // n/a for button clicks
                 }

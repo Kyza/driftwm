@@ -203,15 +203,14 @@ pub struct MouseBinding {
     pub trigger: MouseTrigger,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum MouseAction {
     MoveWindow,
     ResizeWindow,
     PanViewport,
     Zoom,
     CenterNearest,
-    ToggleFullscreen,
-    FitWindow,
+    Action(Action),
 }
 
 // ── Gesture types ────────────────────────────────────────────────────
