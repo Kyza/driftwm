@@ -10,12 +10,11 @@ use smithay::{
     backend::renderer::ImportDma,
     delegate_cursor_shape, delegate_data_control, delegate_data_device, delegate_dmabuf,
     delegate_fractional_scale, delegate_idle_inhibit, delegate_keyboard_shortcuts_inhibit,
-    delegate_output, delegate_pointer_constraints, delegate_presentation,
-    delegate_pointer_gestures, delegate_primary_selection, delegate_relative_pointer,
-    delegate_seat, delegate_viewporter,
-    delegate_single_pixel_buffer, delegate_xdg_activation,
+    delegate_output, delegate_pointer_constraints, delegate_pointer_gestures,
+    delegate_presentation, delegate_primary_selection, delegate_relative_pointer, delegate_seat,
+    delegate_single_pixel_buffer, delegate_viewporter, delegate_xdg_activation,
     input::{
-        keyboard, Seat, SeatHandler, SeatState,
+        Seat, SeatHandler, SeatState, keyboard,
         pointer::{CursorIcon, CursorImageStatus, PointerHandle},
     },
     reexports::input::DeviceCapability as LibinputCapability,
@@ -67,7 +66,9 @@ impl SeatHandler for DriftWm {
         // During exec loading (after grace period), replace default cursor with
         // Wait but let client surface cursors through (they take priority).
         if self.exec_cursor_deadline.is_some()
-            && self.exec_cursor_show_at.is_none_or(|t| std::time::Instant::now() >= t)
+            && self
+                .exec_cursor_show_at
+                .is_none_or(|t| std::time::Instant::now() >= t)
             && matches!(&image, CursorImageStatus::Named(icon) if *icon == CursorIcon::Default)
         {
             self.cursor_status = CursorImageStatus::Named(CursorIcon::Wait);
@@ -214,7 +215,7 @@ impl XdgActivationHandler for DriftWm {
                 let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                 self.raise_and_focus(&window, serial);
             } else {
-                self.navigate_to_window(&window, false);
+                self.navigate_to_window(&window, true);
             }
         }
     }
@@ -278,8 +279,8 @@ impl IdleInhibitHandler for DriftWm {
 
 delegate_idle_inhibit!(DriftWm);
 
-use smithay::wayland::idle_notify::{IdleNotifierHandler, IdleNotifierState};
 use smithay::delegate_idle_notify;
+use smithay::wayland::idle_notify::{IdleNotifierHandler, IdleNotifierState};
 
 impl IdleNotifierHandler for DriftWm {
     fn idle_notifier_state(&mut self) -> &mut IdleNotifierState<Self> {
@@ -291,8 +292,8 @@ delegate_idle_notify!(DriftWm);
 delegate_presentation!(DriftWm);
 delegate_single_pixel_buffer!(DriftWm);
 
-use smithay::wayland::xdg_foreign::{XdgForeignHandler, XdgForeignState};
 use smithay::delegate_xdg_foreign;
+use smithay::wayland::xdg_foreign::{XdgForeignHandler, XdgForeignState};
 
 impl XdgForeignHandler for DriftWm {
     fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
@@ -304,8 +305,8 @@ delegate_xdg_foreign!(DriftWm);
 use smithay::delegate_content_type;
 delegate_content_type!(DriftWm);
 
-use smithay::wayland::shell::xdg::dialog::XdgDialogHandler;
 use smithay::delegate_xdg_dialog;
+use smithay::wayland::shell::xdg::dialog::XdgDialogHandler;
 
 impl XdgDialogHandler for DriftWm {
     fn modal_changed(&mut self, toplevel: ToplevelSurface, is_modal: bool) {
@@ -322,9 +323,9 @@ impl XdgDialogHandler for DriftWm {
 }
 delegate_xdg_dialog!(DriftWm);
 
-use smithay::wayland::shell::xdg::decoration::XdgDecorationHandler;
-use smithay::wayland::shell::xdg::ToplevelSurface;
 use smithay::delegate_xdg_decoration;
+use smithay::wayland::shell::xdg::ToplevelSurface;
+use smithay::wayland::shell::xdg::decoration::XdgDecorationHandler;
 
 impl XdgDecorationHandler for DriftWm {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
@@ -336,7 +337,11 @@ impl XdgDecorationHandler for DriftWm {
         toplevel.send_configure();
     }
 
-    fn request_mode(&mut self, toplevel: ToplevelSurface, mode: smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode) {
+    fn request_mode(
+        &mut self,
+        toplevel: ToplevelSurface,
+        mode: smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode,
+    ) {
         use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
 
         let wl_surface = toplevel.wl_surface().clone();
@@ -359,14 +364,18 @@ impl XdgDecorationHandler for DriftWm {
             self.pending_ssd.insert(wl_surface.id());
             // If the window is already mapped (request_mode came after first commit),
             // create the SSD decoration immediately.
-            let window = self.space.elements()
+            let window = self
+                .space
+                .elements()
                 .find(|w| w.wl_surface().as_deref() == Some(&wl_surface))
                 .cloned();
             if let Some(window) = window {
                 let geo = window.geometry();
                 if geo.size.w > 0 && !self.decorations.contains_key(&wl_surface.id()) {
                     let deco = crate::decorations::WindowDecoration::new(
-                        geo.size.w, true, &self.config.decorations,
+                        geo.size.w,
+                        true,
+                        &self.config.decorations,
                     );
                     self.decorations.insert(wl_surface.id(), deco);
                 }
@@ -464,7 +473,7 @@ impl ForeignToplevelHandler for DriftWm {
 
 driftwm::delegate_foreign_toplevel!(DriftWm);
 
-use driftwm::protocols::screencopy::{ScreencopyHandler, ScreencopyManagerState, Screencopy};
+use driftwm::protocols::screencopy::{Screencopy, ScreencopyHandler, ScreencopyManagerState};
 
 impl ScreencopyHandler for DriftWm {
     fn frame(&mut self, screencopy: Screencopy) {
@@ -480,7 +489,9 @@ driftwm::delegate_screencopy!(DriftWm);
 
 driftwm::delegate_image_capture_source!(DriftWm);
 
-use driftwm::protocols::image_copy_capture::{ImageCopyCaptureHandler, ImageCopyCaptureState, PendingCapture};
+use driftwm::protocols::image_copy_capture::{
+    ImageCopyCaptureHandler, ImageCopyCaptureState, PendingCapture,
+};
 
 impl ImageCopyCaptureHandler for DriftWm {
     fn image_copy_capture_state(&mut self) -> &mut ImageCopyCaptureState {
@@ -537,11 +548,11 @@ impl OutputManagementHandler for DriftWm {
 
 driftwm::delegate_output_management!(DriftWm);
 
+use crate::state::SessionLock;
 use smithay::delegate_session_lock;
 use smithay::wayland::session_lock::{
     LockSurface, SessionLockHandler, SessionLockManagerState, SessionLocker,
 };
-use crate::state::SessionLock;
 
 impl SessionLockHandler for DriftWm {
     fn lock_state(&mut self) -> &mut SessionLockManagerState {
@@ -597,8 +608,8 @@ impl SessionLockHandler for DriftWm {
     }
 
     fn new_surface(&mut self, surface: LockSurface, wl_output: WlOutput) {
-        let output = smithay::output::Output::from_resource(&wl_output)
-            .or_else(|| self.active_output());
+        let output =
+            smithay::output::Output::from_resource(&wl_output).or_else(|| self.active_output());
         let Some(output) = output else { return };
 
         let output_size = crate::state::output_logical_size(&output);
@@ -609,7 +620,6 @@ impl SessionLockHandler for DriftWm {
         surface.send_configure();
         self.lock_surfaces.insert(output, surface);
     }
-
 }
 
 delegate_session_lock!(DriftWm);
