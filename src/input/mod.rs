@@ -209,40 +209,16 @@ impl DriftWm {
         }
     }
 
-    fn on_pointer_motion_absolute<I: InputBackend>(
+    /// Hit-test the pointer against all surface layers in z-order and update focus.
+    /// Shared by both absolute and relative pointer motion handlers.
+    fn dispatch_pointer_focus(
         &mut self,
-        event: I::PointerMotionAbsoluteEvent,
+        pointer: &smithay::input::pointer::PointerHandle<DriftWm>,
+        screen_pos: Point<f64, smithay::utils::Logical>,
+        canvas_pos: Point<f64, smithay::utils::Logical>,
+        serial: smithay::utils::Serial,
+        time: u32,
     ) {
-        let output = match self.active_output() {
-            Some(o) => o,
-            None => return,
-        };
-        let output_geo = self.space.output_geometry(&output).unwrap();
-
-        // position_transformed gives screen-local coords (0..width, 0..height)
-        let screen_pos = event.position_transformed(output_geo.size);
-        let canvas_pos = screen_to_canvas(ScreenPos(screen_pos), self.camera(), self.zoom()).0;
-
-        // When locked, pointer only targets the lock surface
-        if !matches!(self.session_lock, crate::state::SessionLock::Unlocked) {
-            let serial = SERIAL_COUNTER.next_serial();
-            let time = Event::time_msec(&event);
-            let pointer = self.seat.get_pointer().unwrap();
-            let focus = self.active_output().and_then(|o| self.lock_surfaces.get(&o)).map(|ls| {
-                (FocusTarget(ls.wl_surface().clone()), Point::<f64, smithay::utils::Logical>::from((0.0, 0.0)))
-            });
-            pointer.motion(self, focus, &MotionEvent { location: screen_pos, serial, time });
-            pointer.frame(self);
-            return;
-        }
-        let serial = SERIAL_COUNTER.next_serial();
-        let time = Event::time_msec(&event);
-        let pointer = self.seat.get_pointer().unwrap();
-
-        // Pointer always stays in canvas coords so cursor rendering and grabs
-        // work consistently. Layer surface focus locations are adjusted to
-        // compensate (see layer_surface_under).
-
         // Override-redirect X11 windows (popups, menus) — above everything
         if let Some(hit) = self.override_redirect_under(canvas_pos) {
             self.pointer_over_layer = false;
@@ -300,6 +276,38 @@ impl DriftWm {
         pointer.motion(self, None, &MotionEvent { location: canvas_pos, serial, time });
         pointer.frame(self);
         self.update_decoration_cursor(canvas_pos);
+    }
+
+    fn on_pointer_motion_absolute<I: InputBackend>(
+        &mut self,
+        event: I::PointerMotionAbsoluteEvent,
+    ) {
+        let output = match self.active_output() {
+            Some(o) => o,
+            None => return,
+        };
+        let output_geo = self.space.output_geometry(&output).unwrap();
+
+        // position_transformed gives screen-local coords (0..width, 0..height)
+        let screen_pos = event.position_transformed(output_geo.size);
+        let canvas_pos = screen_to_canvas(ScreenPos(screen_pos), self.camera(), self.zoom()).0;
+
+        // When locked, pointer only targets the lock surface
+        if !matches!(self.session_lock, crate::state::SessionLock::Unlocked) {
+            let serial = SERIAL_COUNTER.next_serial();
+            let time = Event::time_msec(&event);
+            let pointer = self.seat.get_pointer().unwrap();
+            let focus = self.active_output().and_then(|o| self.lock_surfaces.get(&o)).map(|ls| {
+                (FocusTarget(ls.wl_surface().clone()), Point::<f64, smithay::utils::Logical>::from((0.0, 0.0)))
+            });
+            pointer.motion(self, focus, &MotionEvent { location: screen_pos, serial, time });
+            pointer.frame(self);
+            return;
+        }
+        let serial = SERIAL_COUNTER.next_serial();
+        let time = Event::time_msec(&event);
+        let pointer = self.seat.get_pointer().unwrap();
+        self.dispatch_pointer_focus(&pointer, screen_pos, canvas_pos, serial, time);
     }
 
     /// Handle relative pointer motion (libinput mice/trackpads).
@@ -410,62 +418,7 @@ impl DriftWm {
             },
         );
 
-        // Hit-test layers then canvas (same as absolute motion)
-
-        // Override-redirect X11 windows (popups, menus) — above everything
-        if let Some(hit) = self.override_redirect_under(canvas_pos) {
-            self.pointer_over_layer = false;
-            pointer.motion(self, Some(hit), &MotionEvent { location: canvas_pos, serial, time });
-            pointer.frame(self);
-            return;
-        }
-
-        if let Some(hit) = self.layer_surface_under(screen_pos, canvas_pos, &[WlrLayer::Overlay, WlrLayer::Top]) {
-            self.pointer_over_layer = true;
-            pointer.motion(self, Some(hit), &MotionEvent { location: canvas_pos, serial, time });
-            pointer.frame(self);
-            return;
-        }
-
-        // Non-widget canvas windows (visually above canvas layers)
-        let under = self.surface_under(canvas_pos, Some(false));
-        if under.is_some() {
-            self.pointer_over_layer = false;
-            pointer.motion(self, under, &MotionEvent { location: canvas_pos, serial, time });
-            pointer.frame(self);
-            self.update_decoration_cursor(canvas_pos);
-            return;
-        }
-
-        // Canvas-positioned layer surfaces
-        if let Some(hit) = self.canvas_layer_under(canvas_pos) {
-            self.pointer_over_layer = false;
-            pointer.motion(self, Some(hit), &MotionEvent { location: canvas_pos, serial, time });
-            pointer.frame(self);
-            return;
-        }
-
-        // Widget canvas windows (visually below canvas layers)
-        let under = self.surface_under(canvas_pos, Some(true));
-        if under.is_some() {
-            self.pointer_over_layer = false;
-            pointer.motion(self, under, &MotionEvent { location: canvas_pos, serial, time });
-            pointer.frame(self);
-            self.update_decoration_cursor(canvas_pos);
-            return;
-        }
-
-        if let Some(hit) = self.layer_surface_under(screen_pos, canvas_pos, &[WlrLayer::Bottom, WlrLayer::Background]) {
-            self.pointer_over_layer = true;
-            pointer.motion(self, Some(hit), &MotionEvent { location: canvas_pos, serial, time });
-            pointer.frame(self);
-            return;
-        }
-
-        self.pointer_over_layer = false;
-        pointer.motion(self, None, &MotionEvent { location: canvas_pos, serial, time });
-        pointer.frame(self);
-        self.update_decoration_cursor(canvas_pos);
+        self.dispatch_pointer_focus(&pointer, screen_pos, canvas_pos, serial, time);
     }
 
     /// Find the Wayland surface and local coordinates under the given canvas position.
