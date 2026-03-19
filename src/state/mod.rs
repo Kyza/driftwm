@@ -316,8 +316,9 @@ pub struct DriftWm {
     // Keys are prefixed by protocol: "sc:{output}" for wlr-screencopy,
     // "cap:{output}" for ext-image-copy-capture (different transforms).
     pub capture_state: HashMap<String, CaptureOutputState>,
-    // -- global: background tile (loaded once, shared) --
-    pub background_tile: Option<(MemoryRenderBuffer, i32, i32)>,
+    // -- global: background tile shader + per-output cached elements --
+    pub tile_shader: Option<GlesTexProgram>,
+    pub cached_tile_bg: HashMap<String, crate::render::TileShaderElement>,
 
     // -- global: protocol state (held for smithay delegate macros) --
     pub dmabuf_state: DmabufState,
@@ -586,7 +587,8 @@ impl DriftWm {
             csd_shadows: HashMap::new(),
             cached_bg_elements: HashMap::new(),
             capture_state: HashMap::new(),
-            background_tile: None,
+            tile_shader: None,
+            cached_tile_bg: HashMap::new(),
             dmabuf_state: DmabufState::new(),
             dmabuf_global: None,
             cursor_shape_state,
@@ -1429,7 +1431,8 @@ impl DriftWm {
         if new_config.background != self.config.background {
             self.background_shader = None;
             self.cached_bg_elements.clear();
-            self.background_tile = None;
+            self.tile_shader = None;
+            self.cached_tile_bg.clear();
         }
 
         // Cursor theme/size — validate theme before committing

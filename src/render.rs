@@ -33,12 +33,132 @@ use smithay::utils::IsAlive;
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::seat::WaylandFocus;
 
+use smithay::backend::renderer::element::{Id, UnderlyingStorage};
+
 use driftwm::canvas::{self, CanvasPos, canvas_to_screen};
+
+/// Render element that tiles a texture across an area using a custom GLSL shader.
+/// Behaves like `PixelShaderElement` for element tracking (stable ID, area-based
+/// geometry, resize/update_uniforms) but renders via `render_texture_from_to`
+/// so the shader can sample the tile texture.
+#[derive(Debug, Clone)]
+pub struct TileShaderElement {
+    shader: GlesTexProgram,
+    texture: GlesTexture,
+    tex_w: i32,
+    tex_h: i32,
+    id: Id,
+    commit_counter: CommitCounter,
+    area: Rectangle<i32, Logical>,
+    opaque_regions: Vec<Rectangle<i32, Logical>>,
+    alpha: f32,
+    additional_uniforms: Vec<Uniform<'static>>,
+    kind: Kind,
+}
+
+impl TileShaderElement {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        shader: GlesTexProgram,
+        texture: GlesTexture,
+        tex_w: i32,
+        tex_h: i32,
+        area: Rectangle<i32, Logical>,
+        opaque_regions: Option<Vec<Rectangle<i32, Logical>>>,
+        alpha: f32,
+        additional_uniforms: Vec<Uniform<'_>>,
+        kind: Kind,
+    ) -> Self {
+        Self {
+            shader,
+            texture,
+            tex_w,
+            tex_h,
+            id: Id::new(),
+            commit_counter: CommitCounter::default(),
+            area,
+            opaque_regions: opaque_regions.unwrap_or_default(),
+            alpha,
+            additional_uniforms: additional_uniforms.into_iter().map(|u| u.into_owned()).collect(),
+            kind,
+        }
+    }
+
+    pub fn resize(
+        &mut self,
+        area: Rectangle<i32, Logical>,
+        opaque_regions: Option<Vec<Rectangle<i32, Logical>>>,
+    ) {
+        let opaque_regions = opaque_regions.unwrap_or_default();
+        if self.area != area || self.opaque_regions != opaque_regions {
+            self.area = area;
+            self.opaque_regions = opaque_regions;
+            self.commit_counter.increment();
+        }
+    }
+
+    pub fn update_uniforms(&mut self, additional_uniforms: Vec<Uniform<'_>>) {
+        self.additional_uniforms = additional_uniforms.into_iter().map(|u| u.into_owned()).collect();
+        self.commit_counter.increment();
+    }
+}
+
+impl Element for TileShaderElement {
+    fn id(&self) -> &Id { &self.id }
+    fn current_commit(&self) -> CommitCounter { self.commit_counter }
+
+    fn src(&self) -> Rectangle<f64, smithay::utils::Buffer> {
+        Rectangle::from_size((self.tex_w as f64, self.tex_h as f64).into())
+    }
+
+    fn geometry(&self, scale: Scale<f64>) -> Rectangle<i32, Physical> {
+        self.area.to_physical_precise_round(scale)
+    }
+
+    fn opaque_regions(&self, scale: Scale<f64>) -> OpaqueRegions<i32, Physical> {
+        self.opaque_regions
+            .iter()
+            .map(|region| region.to_physical_precise_round(scale))
+            .collect()
+    }
+
+    fn alpha(&self) -> f32 { self.alpha }
+    fn kind(&self) -> Kind { self.kind }
+}
+
+impl RenderElement<GlesRenderer> for TileShaderElement {
+    fn draw(
+        &self,
+        frame: &mut GlesFrame<'_, '_>,
+        src: Rectangle<f64, smithay::utils::Buffer>,
+        dst: Rectangle<i32, Physical>,
+        damage: &[Rectangle<i32, Physical>],
+        opaque_regions: &[Rectangle<i32, Physical>],
+    ) -> Result<(), GlesError> {
+        frame.render_texture_from_to(
+            &self.texture,
+            src,
+            dst,
+            damage,
+            opaque_regions,
+            Transform::Normal,
+            self.alpha,
+            Some(&self.shader),
+            &self.additional_uniforms,
+        )
+    }
+
+    #[inline]
+    fn underlying_storage(&self, _renderer: &mut GlesRenderer) -> Option<UnderlyingStorage<'_>> {
+        None
+    }
+}
 
 render_elements! {
     pub OutputRenderElements<=GlesRenderer>;
     Background=RescaleRenderElement<PixelShaderElement>,
-    Tile=RescaleRenderElement<MemoryRenderBufferRenderElement<GlesRenderer>>,
+    TileBg=RescaleRenderElement<TileShaderElement>,
+    Decoration=RescaleRenderElement<MemoryRenderBufferRenderElement<GlesRenderer>>,
     Window=RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
     CsdWindow=RescaleRenderElement<RoundedCornerElement>,
     Layer=WaylandSurfaceRenderElement<GlesRenderer>,
@@ -131,6 +251,24 @@ pub fn compile_corner_clip_shader(renderer: &mut GlesRenderer) -> Option<GlesTex
         Ok(shader) => Some(shader),
         Err(e) => {
             tracing::error!("Failed to compile corner clip shader: {e}");
+            None
+        }
+    }
+}
+
+const TILE_BG_SRC: &str = include_str!("shaders/tile_bg.glsl");
+
+pub const TILE_BG_UNIFORMS: &[UniformName<'static>] = &[
+    UniformName { name: Cow::Borrowed("u_camera"), type_: UniformType::_2f },
+    UniformName { name: Cow::Borrowed("u_tile_size"), type_: UniformType::_2f },
+    UniformName { name: Cow::Borrowed("u_output_size"), type_: UniformType::_2f },
+];
+
+pub fn compile_tile_bg_shader(renderer: &mut GlesRenderer) -> Option<GlesTexProgram> {
+    match renderer.compile_custom_texture_shader(TILE_BG_SRC, TILE_BG_UNIFORMS) {
+        Ok(shader) => Some(shader),
+        Err(e) => {
+            tracing::error!("Failed to compile tile background shader: {e}");
             None
         }
     }
@@ -373,79 +511,6 @@ fn blur_pass(
         let _ = frame.finish()?;
     }
     Ok(())
-}
-
-/// Build tiled background elements for the current frame.
-///
-/// Each tile is a (w+2)×(h+2) buffer with the last col/row duplicated,
-/// stepped at the original (w, h) interval. The 1px overlap covers any
-/// sub-pixel rounding gaps from RescaleRenderElement at fractional zoom.
-pub fn build_tile_background_elements(
-    state: &crate::state::DriftWm,
-    renderer: &mut GlesRenderer,
-    output: &Output,
-    camera: Point<f64, smithay::utils::Logical>,
-    zoom: f64,
-) -> Vec<OutputRenderElements> {
-    let scale = output.current_scale().integer_scale();
-    let output_size = output
-        .current_mode()
-        .map(|m| output.current_transform().transform_size(m.size.to_logical(scale)))
-        .unwrap_or((1, 1).into());
-
-    let Some((tile_buf, tw, th)) = &state.background_tile else {
-        return vec![];
-    };
-    let tw = *tw;
-    let th = *th;
-    if tw <= 0 || th <= 0 {
-        return vec![];
-    }
-
-    let cam_x = camera.x;
-    let cam_y = camera.y;
-
-    // Visible canvas area: viewport / zoom
-    let visible_w = output_size.w as f64 / zoom;
-    let visible_h = output_size.h as f64 / zoom;
-
-    // First visible tile: snap camera to tile grid
-    let start_x = (cam_x / tw as f64).floor() as i64 * tw as i64;
-    let start_y = (cam_y / th as f64).floor() as i64 * th as i64;
-    let end_x = (cam_x + visible_w).ceil() as i64;
-    let end_y = (cam_y + visible_h).ceil() as i64;
-
-    let mut elements = Vec::new();
-    let mut ty = start_y;
-    while ty < end_y {
-        let mut tx = start_x;
-        while tx < end_x {
-            let canvas_rel_x = tx as f64 - cam_x;
-            let canvas_rel_y = ty as f64 - cam_y;
-            let pos: Point<f64, Physical> = (canvas_rel_x, canvas_rel_y).into();
-
-            if let Ok(elem) = MemoryRenderBufferRenderElement::from_buffer(
-                renderer,
-                pos,
-                tile_buf,
-                None,
-                None,
-                None,
-                Kind::Unspecified,
-            ) {
-                elements.push(OutputRenderElements::Tile(
-                    RescaleRenderElement::from_element(
-                        elem,
-                        Point::<i32, Physical>::from((0, 0)),
-                        zoom,
-                    ),
-                ));
-            }
-            tx += (tw - 1) as i64;
-        }
-        ty += (th - 1) as i64;
-    }
-    elements
 }
 
 /// Build render elements for X11 override-redirect windows (menus, tooltips, splashes).
@@ -710,22 +775,28 @@ pub fn update_background_element(
     let camera_moved = cur_camera != last_rendered_camera;
     let zoom_changed = cur_zoom != last_rendered_zoom;
     let output_name = output.name();
+    let scale = output.current_scale().integer_scale();
+    let output_size = output
+        .current_mode()
+        .map(|m| output.current_transform().transform_size(m.size.to_logical(scale)))
+        .unwrap_or((1, 1).into());
+    let canvas_w = (output_size.w as f64 / cur_zoom).ceil() as i32;
+    let canvas_h = (output_size.h as f64 / cur_zoom).ceil() as i32;
+    let canvas_area = Rectangle::from_size((canvas_w, canvas_h).into());
+
     if let Some(elem) = state.cached_bg_elements.get_mut(&output_name) {
-        let scale = output.current_scale().integer_scale();
-        let output_size = output
-            .current_mode()
-            .map(|m| output.current_transform().transform_size(m.size.to_logical(scale)))
-            .unwrap_or((1, 1).into());
-        let canvas_w = (output_size.w as f64 / cur_zoom).ceil() as i32;
-        let canvas_h = (output_size.h as f64 / cur_zoom).ceil() as i32;
-        let canvas_area = Rectangle::from_size((canvas_w, canvas_h).into());
         elem.resize(canvas_area, Some(vec![canvas_area]));
-        // Always update — with multiple outputs the shared element may have
-        // another output's camera from the previous render_frame call.
         elem.update_uniforms(vec![Uniform::new(
             "u_camera",
             (cur_camera.x as f32, cur_camera.y as f32),
         )]);
+    } else if let Some(elem) = state.cached_tile_bg.get_mut(&output_name) {
+        elem.resize(canvas_area, Some(vec![canvas_area]));
+        elem.update_uniforms(vec![
+            Uniform::new("u_camera", (cur_camera.x as f32, cur_camera.y as f32)),
+            Uniform::new("u_tile_size", (elem.tex_w as f32, elem.tex_h as f32)),
+            Uniform::new("u_output_size", (canvas_w as f32, canvas_h as f32)),
+        ]);
     }
     (camera_moved, zoom_changed)
 }
@@ -770,7 +841,7 @@ pub fn compose_frame(
     }
 
     // Ensure this output has a background element (lazy init per output, and re-init after config reload)
-    if !state.cached_bg_elements.contains_key(&output.name()) && state.background_tile.is_none() {
+    if !state.cached_bg_elements.contains_key(&output.name()) && !state.cached_tile_bg.contains_key(&output.name()) {
         let output_size = output
             .current_mode()
             .map(|m| output.current_transform().transform_size(
@@ -876,7 +947,7 @@ pub fn compose_frame(
                     None,
                     Kind::Unspecified,
                 ) {
-                    target.push(OutputRenderElements::Tile(
+                    target.push(OutputRenderElements::Decoration(
                         RescaleRenderElement::from_element(
                             bar_elem,
                             Point::<i32, Physical>::from((0, 0)),
@@ -1158,8 +1229,14 @@ pub fn compose_frame(
                     zoom,
                 ),
             )]
-        } else if state.background_tile.is_some() {
-            build_tile_background_elements(state, renderer, output, camera, zoom)
+        } else if let Some(elem) = state.cached_tile_bg.get(&output.name()) {
+            vec![OutputRenderElements::TileBg(
+                RescaleRenderElement::from_element(
+                    elem.clone(),
+                    Point::<i32, Physical>::from((0, 0)),
+                    zoom,
+                ),
+            )]
         } else {
             vec![]
         };
@@ -1634,7 +1711,7 @@ fn build_output_outline_elements(
             if let Ok(elem) = MemoryRenderBufferRenderElement::from_buffer(
                 renderer, loc, &buf, Some(opacity), None, None, Kind::Unspecified,
             ) {
-                elements.push(OutputRenderElements::Tile(
+                elements.push(OutputRenderElements::Decoration(
                     RescaleRenderElement::from_element(
                         elem,
                         Point::<i32, Physical>::from((0, 0)),
@@ -1662,39 +1739,46 @@ pub fn init_background(state: &mut crate::state::DriftWm, renderer: &mut GlesRen
                 let (w, h) = img.dimensions();
                 let raw = img.into_raw();
 
-                // Build (w+2)×(h+2) buffer: duplicate last 2 cols/rows so adjacent
-                // tiles overlap by 2 opaque pixels, covering sub-pixel rounding gaps.
-                let pad = 2usize;
-                let ew = w as usize + pad;
-                let eh = h as usize + pad;
-                let mut expanded = vec![0u8; ew * eh * 4];
-                for y in 0..h as usize {
-                    let src_row = y * w as usize * 4;
-                    let dst_row = y * ew * 4;
-                    expanded[dst_row..dst_row + w as usize * 4]
-                        .copy_from_slice(&raw[src_row..src_row + w as usize * 4]);
-                    let last_px = &raw[src_row + (w as usize - 1) * 4..src_row + w as usize * 4];
-                    for p in 0..pad {
-                        let dst = dst_row + (w as usize + p) * 4;
-                        expanded[dst..dst + 4].copy_from_slice(last_px);
+                use smithay::backend::renderer::ImportMem;
+                use smithay::utils::Buffer;
+                match renderer.import_memory(
+                    &raw,
+                    Fourcc::Abgr8888,
+                    Size::<i32, Buffer>::from((w as i32, h as i32)),
+                    false,
+                ) {
+                    Ok(texture) => {
+                        if state.tile_shader.is_none() {
+                            state.tile_shader = compile_tile_bg_shader(renderer);
+                        }
+                        if let Some(ref shader) = state.tile_shader {
+                            let tw = w as i32;
+                            let th = h as i32;
+                            let area = Rectangle::from_size(initial_size);
+                            let elem = TileShaderElement::new(
+                                shader.clone(),
+                                texture,
+                                tw,
+                                th,
+                                area,
+                                Some(vec![area]),
+                                1.0,
+                                vec![
+                                    Uniform::new("u_camera", (0.0f32, 0.0f32)),
+                                    Uniform::new("u_tile_size", (tw as f32, th as f32)),
+                                    Uniform::new("u_output_size", (initial_size.w as f32, initial_size.h as f32)),
+                                ],
+                                Kind::Unspecified,
+                            );
+                            state.cached_tile_bg.insert(output_name.to_string(), elem);
+                            return;
+                        }
+                        tracing::error!("Tile shader compilation failed, using default shader");
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to upload tile texture: {e}, using default shader");
                     }
                 }
-                let last_row: Vec<u8> = expanded[(h as usize - 1) * ew * 4..h as usize * ew * 4].to_vec();
-                for p in 0..pad {
-                    let dst = (h as usize + p) * ew * 4;
-                    expanded[dst..dst + ew * 4].copy_from_slice(&last_row);
-                }
-
-                let buffer = MemoryRenderBuffer::from_slice(
-                    &expanded,
-                    Fourcc::Abgr8888,
-                    (ew as i32, eh as i32),
-                    1,
-                    Transform::Normal,
-                    None,
-                );
-                state.background_tile = Some((buffer, w as i32, h as i32));
-                return;
             }
             Err(e) => {
                 tracing::error!("Failed to load tile image {path}: {e}, using default shader");
