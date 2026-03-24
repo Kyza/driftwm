@@ -501,7 +501,9 @@ impl Screencopy {
         });
 
         let size = self.info.buffer_size;
-        self.frame.damage(0, 0, size.w as u32, size.h as u32);
+        if self.frame.version() >= 2 {
+            self.frame.damage(0, 0, size.w as u32, size.h as u32);
+        }
 
         let tv_sec_hi = (timestamp.as_secs() >> 32) as u32;
         let tv_sec_lo = (timestamp.as_secs() & 0xFFFFFFFF) as u32;
