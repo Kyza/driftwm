@@ -104,22 +104,28 @@ impl WindowExt for Window {
 
     fn enter_fit_configure(&self, size: Size<i32, Logical>) {
         if let Some(toplevel) = self.toplevel() {
+            use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
             toplevel.with_pending_state(|state| {
+                state.states.set(xdg_toplevel::State::Maximized);
                 state.size = Some(size);
             });
             toplevel.send_configure();
         } else if let Some(x11) = self.x11_surface() {
+            x11.set_maximized(true).ok();
             x11.configure(Rectangle::new(x11.geometry().loc, size)).ok();
         }
     }
 
     fn exit_fit_configure(&self, saved_size: Size<i32, Logical>) {
         if let Some(toplevel) = self.toplevel() {
+            use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
             toplevel.with_pending_state(|state| {
+                state.states.unset(xdg_toplevel::State::Maximized);
                 state.size = Some(saved_size);
             });
             toplevel.send_configure();
         } else if let Some(x11) = self.x11_surface() {
+            x11.set_maximized(false).ok();
             x11.configure(Rectangle::new(x11.geometry().loc, saved_size)).ok();
         }
     }
