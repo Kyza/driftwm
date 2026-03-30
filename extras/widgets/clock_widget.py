@@ -3,6 +3,7 @@
 
 import atexit
 import os
+import subprocess
 import time
 from datetime import datetime
 
@@ -47,6 +48,12 @@ try:
     with Live(render(), console=console, refresh_per_second=1) as live:
         while True:
             live.update(render())
-            poll_click(1.0)
+            click = poll_click(1.0)
+            if click is not None:
+                subprocess.Popen(
+                    ["gnome-clocks"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
 finally:
     disable_mouse()

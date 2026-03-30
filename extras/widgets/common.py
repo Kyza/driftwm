@@ -49,9 +49,7 @@ def sparkline(values: deque | list, width: int = 10) -> str:
     recent = list(values)[-width:]
     if not recent:
         return " " * width
-    return "".join(
-        SPARK[max(min(int(v / 100 * 8), 8), 1 if v > 0.5 else 0)] for v in recent
-    )
+    return "".join(SPARK[max(min(int(v / 100 * 8), 8), 1 if v > 0.5 else 0)] for v in recent)
 
 
 def progress_bar(pct: float, width: int = 10) -> str:
@@ -95,6 +93,7 @@ ICON = {
     "bt_on": "󰂯",
     "bt_off": "󰂲",
     "bt_connected": "󰂱",
+    "caffeine": "\uec15",  # nf-md-coffee-steam
 }
 
 # ── Weather icons (Unicode, no Nerd Font needed) ────────────
@@ -342,9 +341,7 @@ def get_weather() -> dict | None:
         cur = data["current"]
         daily = data["daily"]
         code = cur["weather_code"]
-        tomorrow_code = (
-            daily["weather_code"][1] if len(daily["weather_code"]) > 1 else None
-        )
+        tomorrow_code = daily["weather_code"][1] if len(daily["weather_code"]) > 1 else None
         return {
             "location": city,
             "temp": str(round(cur["temperature_2m"])),
@@ -355,8 +352,7 @@ def get_weather() -> dict | None:
             "low": str(round(daily["temperature_2m_min"][0])),
             "tomorrow_temp": str(
                 round(
-                    (daily["temperature_2m_max"][1] + daily["temperature_2m_min"][1])
-                    / 2,
+                    (daily["temperature_2m_max"][1] + daily["temperature_2m_min"][1]) / 2,
                 ),
             )
             if len(daily["temperature_2m_max"]) > 1

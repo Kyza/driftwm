@@ -6,6 +6,7 @@ import contextlib
 import os
 import subprocess
 from collections import deque
+from pathlib import Path
 
 from common import (
     ICON,
@@ -91,6 +92,66 @@ def _set_volume(pct: int) -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+
+
+# ── Caffeine (swayidle toggle) ─────────────────────────────
+
+_LOCK_SH = str(
+    Path("~/Documents/work/scripts/driftwm/extras/scripts/lock.sh").expanduser(),
+)
+SWAYIDLE_CMD = [
+    "swayidle",
+    "-w",
+    "timeout",
+    "300",
+    "brightnessctl -s set 10%",
+    "resume",
+    "brightnessctl -r",
+    "timeout",
+    "330",
+    _LOCK_SH,
+    "timeout",
+    "600",
+    "systemctl suspend",
+    "before-sleep",
+    _LOCK_SH,
+]
+
+
+def _is_swayidle_running() -> bool:
+    return (
+        subprocess.run(
+            ["pgrep", "-x", "swayidle"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+_caffeine_on = not _is_swayidle_running()
+
+
+def _toggle_caffeine() -> None:
+    global _caffeine_on  # noqa: PLW0603
+    if _caffeine_on:
+        # Turn off caffeine → restart swayidle
+        subprocess.Popen(
+            SWAYIDLE_CMD,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        _caffeine_on = False
+    else:
+        # Turn on caffeine → kill swayidle
+        subprocess.run(
+            ["killall", "swayidle"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        _caffeine_on = True
 
 
 def _set_brightness(pct: int) -> None:
@@ -186,9 +247,14 @@ def _render_brightness(text: Text, line: int) -> int:
     bicon = brightness_icon(bri)
     text.append(f"   {bicon}  ", style="yellow")
     info = f"bri  {bri:3d}%"
-    text.append(f"{info:<{PAD}}")
+    if _caffeine_on:
+        text.append(info)
+        text.append(f"   {ICON['caffeine']}", style="yellow")
+        text.append(f"{'':>{PAD - 9 - 4}}")
+    else:
+        text.append(f"{info:<{PAD}}")
     text.append(f"{progress_bar(bri)}\n", style="yellow")
-    click_map[line] = ("bar", _set_brightness, None)
+    click_map[line] = ("bri_bar", _set_brightness, None)
     return line + 1
 
 
@@ -260,12 +326,15 @@ try:
                     if pct is not None:
                         setter(pct)
                         _slow_state["counter"] = SLOW_POLL_INTERVAL
+                    elif kind == "bri_bar":
+                        _toggle_caffeine()
                     elif kind == "vol_bar" and x <= 7:
                         subprocess.Popen(
                             ["swayosd-client", "--output-volume", "mute-toggle"],
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
                         )
+                        _slow_state["counter"] = SLOW_POLL_INTERVAL
                     elif fallback:
                         with contextlib.suppress(OSError):
                             subprocess.Popen(
