@@ -58,11 +58,42 @@ impl DriftWm {
         self.enforce_below_windows();
         self.update_output_from_camera();
 
-        // Ensure keyboard focus is on the fullscreen window
+        // Ensure keyboard AND pointer focus are on the fullscreen window.
+        // Without pointer focus, pointer constraints (e.g. game cursor lock)
+        // activate on whatever surface had focus before — not the game.
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().unwrap();
         let focus = window.wl_surface().map(|s| FocusTarget(s.into_owned()));
         keyboard.set_focus(self, focus, serial);
+
+        if let Some(wl_surface) = window.wl_surface() {
+            let pointer = self.seat.get_pointer().unwrap();
+            // Deactivate any constraint on the old focused surface
+            if let Some(old) = pointer.current_focus() {
+                smithay::wayland::pointer_constraints::with_pointer_constraint(
+                    &old.0, &pointer, |c| {
+                        if let Some(c) = c
+                            && c.is_active()
+                        {
+                            c.deactivate();
+                        }
+                    },
+                );
+            }
+            let canvas_pos = pointer.current_location();
+            let origin = self.space.element_location(window).unwrap_or_default().to_f64();
+            pointer.motion(
+                self,
+                Some((FocusTarget(wl_surface.into_owned()), origin)),
+                &smithay::input::pointer::MotionEvent {
+                    location: canvas_pos,
+                    serial,
+                    time: self.start_time.elapsed().as_millis() as u32,
+                },
+            );
+            pointer.frame(self);
+            self.maybe_activate_pointer_constraint();
+        }
     }
 
     /// Exit fullscreen on the active output: restore window position, camera, and zoom.
