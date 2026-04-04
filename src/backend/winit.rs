@@ -199,7 +199,7 @@ pub fn init_winit(
             };
 
             // --- Build cursor + compose frame ---
-            let cursor_elements = build_cursor_elements(data, backend.renderer(), cur_camera, cur_zoom, 1.0);
+            let cursor_elements = build_cursor_elements(data, backend.renderer(), cur_camera, cur_zoom, output.current_scale().fractional_scale(), 1.0);
             let mut age = backend.buffer_age().unwrap_or(0);
             if !data.render.cached_tile_bg.is_empty() && (camera_moved || zoom_changed) {
                 age = 0;
