@@ -663,6 +663,7 @@ pub fn build_cursor_elements(
     renderer: &mut GlesRenderer,
     camera: Point<f64, smithay::utils::Logical>,
     zoom: f64,
+    scale: f64,
     alpha: f32,
 ) -> Vec<OutputRenderElements> {
     if alpha <= 0.0 {
@@ -670,9 +671,8 @@ pub fn build_cursor_elements(
     }
     let pointer = state.seat.get_pointer().unwrap();
     let canvas_pos = pointer.current_location();
-    // Custom elements are in screen-local physical coords
     let screen_pos = canvas_to_screen(CanvasPos(canvas_pos), camera, zoom).0;
-    let physical_pos: Point<f64, Physical> = (screen_pos.x, screen_pos.y).into();
+    let physical_pos: Point<f64, Physical> = screen_pos.to_physical_precise_round(scale);
 
     // Separate the status check from mutable state access (Rust 2024 borrow rules)
     let status = state.cursor.cursor_status.clone();
@@ -775,10 +775,16 @@ pub fn update_background_element(
     let camera_moved = cur_camera != last_rendered_camera;
     let zoom_changed = cur_zoom != last_rendered_zoom;
     let output_name = output.name();
-    let scale = output.current_scale().integer_scale();
+    let frac_scale = output.current_scale().fractional_scale();
     let output_size = output
         .current_mode()
-        .map(|m| output.current_transform().transform_size(m.size.to_logical(scale)))
+        .map(|m| {
+            output.current_transform()
+                .transform_size(m.size)
+                .to_f64()
+                .to_logical(frac_scale)
+                .to_i32_ceil()
+        })
         .unwrap_or((1, 1).into());
     let canvas_w = (output_size.w as f64 / cur_zoom).ceil() as i32;
     let canvas_h = (output_size.h as f64 / cur_zoom).ceil() as i32;
@@ -844,9 +850,14 @@ pub fn compose_frame(
     if !state.render.cached_bg_elements.contains_key(&output.name()) && !state.render.cached_tile_bg.contains_key(&output.name()) {
         let output_size = output
             .current_mode()
-            .map(|m| output.current_transform().transform_size(
-                m.size.to_logical(output.current_scale().integer_scale()),
-            ))
+            .map(|m| {
+                let scale = output.current_scale().fractional_scale();
+                output.current_transform()
+                    .transform_size(m.size)
+                    .to_f64()
+                    .to_logical(scale)
+                    .to_i32_ceil()
+            })
             .unwrap_or((1, 1).into());
         init_background(state, renderer, output_size, &output.name());
     }
