@@ -31,7 +31,8 @@
 # repeat_rate = 25           # keys/sec
 # repeat_delay = 200         # ms before repeat starts
 # layout_independent = true  # match bindings by physical key position across layouts
-# numlock = false            # Disable numlock on startup.
+# num_lock = false           # Disable num lock on startup.
+# caps_lock = true           # Enable caps lock on startup.
 # virtual_keyboard = true    # Enable virtual keyboard protocol.
 
 [input.trackpad]

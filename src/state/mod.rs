@@ -11,7 +11,7 @@ use smithay::{
     desktop::{PopupManager, Space, Window},
     input::{
         Seat, SeatState,
-        keyboard::{ModifiersState, XkbConfig},
+        keyboard::{ModifiersState, SerializedMods, XkbConfig},
     },
     output::Output,
     reexports::{
@@ -524,7 +524,8 @@ impl DriftWm {
             .add_keyboard(xkb, config.repeat_delay, config.repeat_rate)
             .expect("Failed to add keyboard");
         keyboard.set_modifier_state(ModifiersState {
-            num_lock: config.numlock,
+            num_lock: config.num_lock,
+            caps_lock: config.caps_lock,
             ..Default::default()
         });
         seat.add_pointer();
