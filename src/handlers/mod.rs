@@ -67,7 +67,8 @@ impl SeatHandler for DriftWm {
         // Wait but let client surface cursors through (they take priority).
         if self.cursor.exec_cursor_deadline.is_some()
             && self
-                .cursor.exec_cursor_show_at
+                .cursor
+                .exec_cursor_show_at
                 .is_none_or(|t| std::time::Instant::now() >= t)
             && matches!(&image, CursorImageStatus::Named(icon) if *icon == CursorIcon::Default)
         {
@@ -257,17 +258,18 @@ impl PointerConstraintsHandler for DriftWm {
     ) {
         use smithay::wayland::pointer_constraints::with_pointer_constraint;
 
-        let is_active = with_pointer_constraint(surface, pointer, |c| {
-            c.is_some_and(|c| c.is_active())
-        });
+        let is_active =
+            with_pointer_constraint(surface, pointer, |c| c.is_some_and(|c| c.is_active()));
         if !is_active {
             return;
         }
 
         // location is surface-local. Find the surface's canvas origin to convert.
-        let window = self.space.elements().find(|w| {
-            w.wl_surface().as_deref() == Some(surface)
-        }).cloned();
+        let window = self
+            .space
+            .elements()
+            .find(|w| w.wl_surface().as_deref() == Some(surface))
+            .cloned();
         if let Some(window) = window
             && let Some(loc) = self.space.element_location(&window)
         {
@@ -304,8 +306,8 @@ impl IdleInhibitHandler for DriftWm {
 
 delegate_idle_inhibit!(DriftWm);
 
-use smithay::delegate_idle_notify;
 use smithay::wayland::idle_notify::{IdleNotifierHandler, IdleNotifierState};
+use smithay::{delegate_idle_notify, delegate_virtual_keyboard_manager};
 
 impl IdleNotifierHandler for DriftWm {
     fn idle_notifier_state(&mut self) -> &mut IdleNotifierState<Self> {
@@ -648,3 +650,5 @@ impl SessionLockHandler for DriftWm {
 }
 
 delegate_session_lock!(DriftWm);
+
+delegate_virtual_keyboard_manager!(DriftWm);

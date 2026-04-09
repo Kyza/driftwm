@@ -88,6 +88,8 @@ pub struct Config {
     bindings: HashMap<KeyCombo, Action>,
     pub mouse: ContextBindings<MouseBinding, MouseAction>,
     pub gestures: ContextBindings<GestureBinding, GestureConfigEntry>,
+    pub virtual_keyboard: bool,
+    pub numlock: bool,
 }
 
 impl Config {
@@ -479,6 +481,8 @@ impl Config {
             bindings,
             mouse: mouse_bindings,
             gestures: gesture_bindings,
+            virtual_keyboard: raw.virtual_keyboard.unwrap_or(false),
+            numlock: raw.numlock.unwrap_or(true),
         }
     }
 
