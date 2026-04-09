@@ -14,12 +14,6 @@
 # Each entry is passed to sh -c, so full shell syntax works (pipes, &&, env vars).
 # autostart = []
 
-# Disable numlock on startup.
-# numlock = false
-
-# Enable virtual keyboard protocol.
-# virtual_keyboard = true
-
 # Environment variables set before any clients launch.
 # Child processes (autostart, exec bindings) inherit these.
 # These override the compositor's built-in toolkit defaults
@@ -37,6 +31,8 @@
 # repeat_rate = 25           # keys/sec
 # repeat_delay = 200         # ms before repeat starts
 # layout_independent = true  # match bindings by physical key position across layouts
+# numlock = false            # Disable numlock on startup.
+# virtual_keyboard = true    # Enable virtual keyboard protocol.
 
 [input.trackpad]
 # tap_to_click = true         # enable tap-to-click

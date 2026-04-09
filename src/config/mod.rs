@@ -481,8 +481,8 @@ impl Config {
             bindings,
             mouse: mouse_bindings,
             gestures: gesture_bindings,
-            virtual_keyboard: raw.virtual_keyboard.unwrap_or(false),
-            numlock: raw.numlock.unwrap_or(true),
+            virtual_keyboard: raw.input.keyboard.virtual_keyboard.unwrap_or(false),
+            numlock: raw.input.keyboard.numlock.unwrap_or(true),
         }
     }
 

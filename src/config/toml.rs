@@ -25,8 +25,6 @@ pub(super) struct ConfigFile {
     pub xwayland: XWaylandConfig,
     pub window_rules: Option<Vec<WindowRuleFile>>,
     pub outputs: Option<Vec<OutputRuleFile>>,
-    pub virtual_keyboard: Option<bool>,
-    pub numlock: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]
@@ -74,6 +72,8 @@ pub(super) struct KeyboardConfig {
     pub options: Option<String>,
     pub model: Option<String>,
     pub layout_independent: Option<bool>,
+    pub numlock: Option<bool>,
+    pub virtual_keyboard: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]
