@@ -11,7 +11,7 @@ use smithay::{
     desktop::{PopupManager, Space, Window},
     input::{
         Seat, SeatState,
-        keyboard::{ModifiersState, SerializedMods, XkbConfig},
+        keyboard::{ModifiersState, XkbConfig},
     },
     output::Output,
     reexports::{
@@ -420,7 +420,7 @@ pub struct DriftWm {
     )>,
 
     // -- global: virtual keyboard --
-    pub virtual_keyboard_state: VirtualKeyboardManagerState,
+    pub virtual_keyboard_state: Option<VirtualKeyboardManagerState>,
 }
 
 /// Per-client state stored by wayland-server for each connected client.
@@ -531,8 +531,14 @@ impl DriftWm {
         seat.add_pointer();
 
         let vk = config.virtual_keyboard.clone();
-        let virtual_keyboard_state =
-            VirtualKeyboardManagerState::new::<Self, _>(&dh, move |_client| vk);
+        let virtual_keyboard_state = if vk {
+            Some(VirtualKeyboardManagerState::new::<Self, _>(
+                &dh,
+                move |_client| vk,
+            ))
+        } else {
+            None
+        };
 
         let autostart = config.autostart.clone();
         Self {
@@ -1474,10 +1480,14 @@ impl DriftWm {
 
         if new_config.virtual_keyboard != self.config.virtual_keyboard {
             let nvk = new_config.virtual_keyboard.clone();
-            self.virtual_keyboard_state =
-                VirtualKeyboardManagerState::new::<Self, _>(&self.display_handle, move |_client| {
-                    nvk
-                });
+            self.virtual_keyboard_state = if nvk {
+                Some(VirtualKeyboardManagerState::new::<Self, _>(
+                    &self.display_handle,
+                    move |_client| nvk,
+                ))
+            } else {
+                None
+            };
         }
 
         self.config = new_config;
