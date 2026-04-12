@@ -339,6 +339,10 @@ GLSL shader wallpapers, Python widgets (clock, calendar, system stats, power
 menu), waybar with taskbar/tray, fuzzel window-search script, and window rules
 tying it all together. Use it as a starting point or steal pieces.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). TL;DR: open an issue before writing non-trivial code, keep PRs small and focused.
+
 ## License
 
 GPL-3.0-or-later
