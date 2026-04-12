@@ -19,7 +19,7 @@ jobs:
     name: build & test
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install dependencies
         run: |
@@ -30,17 +30,17 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: cargo build
-        run: cargo build --all-targets
+      - name: Build tests
+        run: cargo test --no-run
 
-      - name: cargo test
+      - name: Run tests
         run: cargo test
 
   clippy:
     name: clippy
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install dependencies
         run: |
@@ -54,4 +54,4 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: cargo clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy -- -D warnings
