@@ -11,7 +11,17 @@ use smithay::{
     utils::{Logical, Rectangle, SERIAL_COUNTER},
     wayland::{
         compositor::with_states,
-        selection::SelectionTarget,
+        selection::{
+            SelectionTarget,
+            data_device::{
+                clear_data_device_selection, current_data_device_selection_userdata,
+                request_data_device_client_selection, set_data_device_selection,
+            },
+            primary_selection::{
+                clear_primary_selection, current_primary_selection_userdata,
+                request_primary_client_selection, set_primary_selection,
+            },
+        },
         seat::WaylandFocus,
         xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
     },
@@ -297,20 +307,42 @@ impl XwmHandler for DriftWm {
     }
 
     fn send_selection(&mut self, _xwm: XwmId, sel: SelectionTarget, mime: String, fd: std::os::fd::OwnedFd) {
-        if let Some(wm) = self.x11_wm.as_mut() {
-            wm.send_selection(sel, mime, fd).ok();
+        // X11 client wants to read the current Wayland-side selection.
+        match sel {
+            SelectionTarget::Clipboard => {
+                request_data_device_client_selection(&self.seat, mime, fd).ok();
+            }
+            SelectionTarget::Primary => {
+                request_primary_client_selection(&self.seat, mime, fd).ok();
+            }
         }
     }
 
     fn new_selection(&mut self, _xwm: XwmId, sel: SelectionTarget, mimes: Vec<String>) {
-        if let Some(wm) = self.x11_wm.as_mut() {
-            wm.new_selection(sel, Some(mimes)).ok();
+        // X11 client claimed ownership of a selection — register it on the Wayland side.
+        match sel {
+            SelectionTarget::Clipboard => {
+                set_data_device_selection(&self.display_handle, &self.seat, mimes, ());
+            }
+            SelectionTarget::Primary => {
+                set_primary_selection(&self.display_handle, &self.seat, mimes, ());
+            }
         }
     }
 
     fn cleared_selection(&mut self, _xwm: XwmId, sel: SelectionTarget) {
-        if let Some(wm) = self.x11_wm.as_mut() {
-            wm.new_selection(sel, None).ok();
+        // X11 client dropped a selection — clear Wayland side only if it was compositor-set.
+        match sel {
+            SelectionTarget::Clipboard => {
+                if current_data_device_selection_userdata::<Self>(&self.seat).is_some() {
+                    clear_data_device_selection(&self.display_handle, &self.seat);
+                }
+            }
+            SelectionTarget::Primary => {
+                if current_primary_selection_userdata::<Self>(&self.seat).is_some() {
+                    clear_primary_selection(&self.display_handle, &self.seat);
+                }
+            }
         }
     }
 
