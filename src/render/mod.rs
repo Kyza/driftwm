@@ -483,20 +483,31 @@ pub fn update_background_element(
     let canvas_h = (output_size.h as f64 / cur_zoom).ceil() as i32;
     let canvas_area = Rectangle::from_size((canvas_w, canvas_h).into());
 
+    // Only push new uniforms when something the shader consumes has changed —
+    // smithay's update_uniforms unconditionally bumps the element's CommitCounter,
+    // which would otherwise cause the full-screen bg to damage every frame and
+    // force re-composition of every element above it (blur especially).
+    let animated = state.render.background_is_animated;
+    let uniforms_stale = camera_moved || zoom_changed || animated;
+
     if let Some(elem) = state.render.cached_bg_elements.get_mut(&output_name) {
         elem.resize(canvas_area, Some(vec![canvas_area]));
-        let time_secs = state.start_time.elapsed().as_secs_f32();
-        elem.update_uniforms(vec![
-            Uniform::new("u_camera", (cur_camera.x as f32, cur_camera.y as f32)),
-            Uniform::new("u_time", time_secs),
-        ]);
+        if uniforms_stale {
+            let time_secs = state.start_time.elapsed().as_secs_f32();
+            elem.update_uniforms(vec![
+                Uniform::new("u_camera", (cur_camera.x as f32, cur_camera.y as f32)),
+                Uniform::new("u_time", time_secs),
+            ]);
+        }
     } else if let Some(elem) = state.render.cached_tile_bg.get_mut(&output_name) {
         elem.resize(canvas_area, Some(vec![canvas_area]));
-        elem.update_uniforms(vec![
-            Uniform::new("u_camera", (cur_camera.x as f32, cur_camera.y as f32)),
-            Uniform::new("u_tile_size", (elem.tex_w as f32, elem.tex_h as f32)),
-            Uniform::new("u_output_size", (canvas_w as f32, canvas_h as f32)),
-        ]);
+        if camera_moved || zoom_changed {
+            elem.update_uniforms(vec![
+                Uniform::new("u_camera", (cur_camera.x as f32, cur_camera.y as f32)),
+                Uniform::new("u_tile_size", (elem.tex_w as f32, elem.tex_h as f32)),
+                Uniform::new("u_output_size", (canvas_w as f32, canvas_h as f32)),
+            ]);
+        }
     }
     (camera_moved, zoom_changed)
 }

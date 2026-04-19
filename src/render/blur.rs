@@ -1,11 +1,12 @@
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::texture::TextureRenderElement;
-use smithay::backend::renderer::element::{Element, Kind};
+use smithay::backend::renderer::element::{Element, Id, Kind};
 use smithay::backend::renderer::gles::{
     GlesError, GlesRenderer, GlesTexProgram, GlesTexture, Uniform, UniformName, UniformType,
 };
+use smithay::backend::renderer::utils::DamageBag;
 use smithay::output::Output;
-use smithay::utils::{Physical, Rectangle, Size, Transform};
+use smithay::utils::{Buffer, Physical, Rectangle, Size, Transform};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -37,6 +38,12 @@ pub struct BlurCache {
     pub last_geometry_generation: u64,
     pub last_camera_generation: u64,
     pub last_background_hash: u64,
+    /// Stable element identity across frames. The damage tracker treats elements
+    /// with unknown Ids as fully damaged — a fresh Id per frame defeats caching.
+    pub id: Id,
+    /// Records damage only when the blur texture is actually recomputed.
+    /// Cache-hit frames leave this untouched, so the tracker sees zero damage.
+    pub damage_bag: DamageBag<i32, Buffer>,
 }
 
 impl BlurCache {
@@ -50,6 +57,8 @@ impl BlurCache {
             texture: t1, scratch: t2, mask: t3, size,
             dirty: true, last_geometry_generation: 0,
             last_camera_generation: 0, last_background_hash: 0,
+            id: Id::new(),
+            damage_bag: DamageBag::new(4),
         })
     }
 
@@ -65,6 +74,8 @@ impl BlurCache {
             self.mask = t3;
             self.size = size;
             self.dirty = true;
+            // Stored damage rects are at the old size — drop them; next render reseeds.
+            self.damage_bag.reset();
         }
     }
 }
@@ -209,7 +220,6 @@ pub(crate) fn process_blur_requests(
     use smithay::backend::renderer::{Bind, Frame, Offscreen, Renderer};
     use smithay::backend::renderer::Color32F;
     use smithay::backend::renderer::damage::OutputDamageTracker;
-    use smithay::backend::renderer::element::Id;
 
     let logical_size = crate::state::output_logical_size(output);
     let output_size: Size<i32, Physical> = logical_size.to_physical_precise_round(output_scale);
@@ -434,6 +444,10 @@ pub(crate) fn process_blur_requests(
             let _ = frame.finish();
         }
 
+        // Blur texture content just changed — advance the damage snapshot so the
+        // tracker re-composites the blur element on screen this frame.
+        let buf = cache.size.to_logical(1).to_buffer(1, Transform::Normal);
+        cache.damage_bag.add([Rectangle::from_size(buf)]);
         cache.dirty = false;
     }
 
@@ -452,8 +466,8 @@ pub(crate) fn process_blur_requests(
         };
         let insert_idx = prefix + req.elem_start + req.elem_count + index_shift;
         let insert_idx = insert_idx.min(all_elements.len());
-        let blur_elem = TextureRenderElement::from_static_texture(
-            Id::new(),
+        let blur_elem = TextureRenderElement::from_texture_with_damage(
+            cache.id.clone(),
             context_id.clone(),
             req.screen_rect.loc.to_f64(),
             cache.texture.clone(),
@@ -466,6 +480,7 @@ pub(crate) fn process_blur_requests(
                 (win_size.h as f64 / output_scale) as i32,
             ))),
             None,
+            cache.damage_bag.snapshot(),
             Kind::Unspecified,
         );
         all_elements.insert(insert_idx, OutputRenderElements::Blur(blur_elem));
