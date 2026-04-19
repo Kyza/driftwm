@@ -663,12 +663,25 @@ impl DriftWm {
                 return Some((FocusTarget(surface), (surface_loc + surface_origin).to_f64()));
             }
 
-            // Then check SSD decoration areas for this window
+            // Then check decoration areas for this window
+            let size = window.geometry().size;
             if self.decorations.contains_key(&wl_surface.id()) {
-                let size = window.geometry().size;
                 if crate::decorations::close_button_contains(pos, loc, size.w, bar_height)
                     || crate::decorations::title_bar_contains(pos, loc, size.w, bar_height)
                     || crate::decorations::resize_edge_at(pos, loc, size, bar_height, border_width).is_some()
+                {
+                    return Some((FocusTarget((*wl_surface).clone()), loc.to_f64()));
+                }
+            } else {
+                // CSD: compositor-side resize margin strictly outside the client
+                // rect. Catches Zed-class clients that drop their own edge handles
+                // on seeing our Tiled hint. Clients that kept their handles
+                // (Brave, Nautilus) own the inside; we own the outside — no overlap.
+                let is_widget = rule.as_ref().is_some_and(|r| r.widget);
+                let is_fullscreen = self.fullscreen.values().any(|fs| &fs.window == window);
+                if !is_widget
+                    && !is_fullscreen
+                    && crate::decorations::resize_edge_at(pos, loc, size, 0, border_width).is_some()
                 {
                     return Some((FocusTarget((*wl_surface).clone()), loc.to_f64()));
                 }
@@ -742,8 +755,8 @@ impl DriftWm {
         }
     }
 
-    /// Check if a canvas position hits an SSD decoration area.
-    /// Returns the window and what part of the decoration was hit.
+    /// Check if a canvas position hits a decoration area (SSD chrome, or the
+    /// compositor-side CSD resize margin).
     pub fn decoration_under(
         &self,
         pos: Point<f64, smithay::utils::Logical>,
@@ -754,29 +767,33 @@ impl DriftWm {
         // Iterate in z-order (topmost first, matching space.elements().rev())
         for window in self.space.elements().rev() {
             let Some(wl_surface) = window.wl_surface() else { continue; };
-            if !self.decorations.contains_key(&wl_surface.id()) {
-                continue;
-            }
-            let Some(loc) = self.space.element_location(window) else {
-                continue;
-            };
+            let Some(loc) = self.space.element_location(window) else { continue; };
             let size = window.geometry().size;
 
-            // Close button (checked before title bar)
-            if crate::decorations::close_button_contains(pos, loc, size.w, bar_height) {
-                return Some((window.clone(), DecorationHit::CloseButton));
-            }
-
-            // Title bar
-            if crate::decorations::title_bar_contains(pos, loc, size.w, bar_height) {
-                return Some((window.clone(), DecorationHit::TitleBar));
-            }
-
-            // Resize borders
-            if let Some(edge) =
-                crate::decorations::resize_edge_at(pos, loc, size, bar_height, border_width)
-            {
-                return Some((window.clone(), DecorationHit::ResizeBorder(edge)));
+            if self.decorations.contains_key(&wl_surface.id()) {
+                if crate::decorations::close_button_contains(pos, loc, size.w, bar_height) {
+                    return Some((window.clone(), DecorationHit::CloseButton));
+                }
+                if crate::decorations::title_bar_contains(pos, loc, size.w, bar_height) {
+                    return Some((window.clone(), DecorationHit::TitleBar));
+                }
+                if let Some(edge) =
+                    crate::decorations::resize_edge_at(pos, loc, size, bar_height, border_width)
+                {
+                    return Some((window.clone(), DecorationHit::ResizeBorder(edge)));
+                }
+            } else {
+                // CSD: only the outer resize margin (see surface_under).
+                let is_widget = driftwm::config::applied_rule(&wl_surface)
+                    .is_some_and(|r| r.widget);
+                let is_fullscreen = self.fullscreen.values().any(|fs| &fs.window == window);
+                if !is_widget
+                    && !is_fullscreen
+                    && let Some(edge) =
+                        crate::decorations::resize_edge_at(pos, loc, size, 0, border_width)
+                {
+                    return Some((window.clone(), DecorationHit::ResizeBorder(edge)));
+                }
             }
         }
         None

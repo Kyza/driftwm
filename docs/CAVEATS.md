@@ -26,6 +26,18 @@ On real hardware (udev backend), the compositor owns all input devices via libin
 
 `SERIAL_COUNTER.next_serial()` generates unique serials for input events. Reusing or going backwards breaks client-side validation. Always generate a fresh serial per event.
 
+## We lie to clients about being tiled
+
+driftwm sets all four `xdg_toplevel` Tiled states on every CSD window, even though no window is ever actually tiled — driftwm is a floating compositor. We clip client shadow ourselves regardless (via the `corner_clip` shader), so Tiled is **not** load-bearing for shadow suppression. What it actually buys is corner-radius uniformity: GTK/libadwaita/Chromium drop their own rounded corners on seeing Tiled, so our clip arc is the only one visible. Without Tiled, a client that rounds to 8 px inside our 10 px clip shows a subtle double-curve.
+
+This is a deliberate semantic misuse of the protocol. The debt it incurs:
+
+- Some clients (Zed, anything using `gpui`) also drop their own resize edge handles on seeing Tiled, reasoning that a tiled window has compositor-managed size. We compensate with a compositor-side invisible resize margin around every CSD window (`input/mod.rs::surface_under` / `decoration_under`), mirroring what Mutter and KWin do for CSD apps.
+- SCTK-based toolkits (Alacritty) interpret `Tiled + size=None` as "stay at current tile size," not "pick preferred." So fit/fullscreen exit paths must always send an explicit size (`window_ext.rs::exit_fit_configure`, `exit_fullscreen_configure`), which in turn requires tracking a `RestoreSize` separately from `window.geometry().size` because some clients (Chromium) shrink their reported geometry on each round-trip.
+- Every new "this client behaves weirdly under Tiled" issue traces back here.
+
+cosmic-comp makes the exact same bet (`clip_floating_windows` default-on in `AppearanceConfig`, `src/shell/element/window.rs:204`) and has carried the same complexity for years. This is a settled hack in Wayland-land, not a novel misstep — but it's still a hack. If a future protocol extension exposes "suppress client chrome" as a first-class signal, migrate to it and delete all of the above.
+
 ## What to unit test
 
 Smithay glue code (handlers, delegates) is not worth testing — it's framework boilerplate. Write tests for **your** logic:

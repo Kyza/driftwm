@@ -161,6 +161,11 @@ pub struct FullscreenState {
     pub saved_size: Size<i32, Logical>,
 }
 
+pub struct PendingRecenter {
+    pub target_center: Point<f64, Logical>,
+    pub pre_exit_size: Size<i32, Logical>,
+}
+
 /// Per-output viewport state, stored on each `Output` via `UserDataMap`.
 /// Wrapped in `Mutex` since `UserDataMap` requires `Sync`.
 /// Fields that are !Send (PixelShaderElement) stay on DriftWm.
@@ -355,10 +360,8 @@ pub struct DriftWm {
     /// clients (Chromium) whose post-unfit size is smaller than what we
     /// configured. Waiting for the size change avoids firing while the
     /// client is still reporting the fit-era geometry.
-    pub pending_recenter: HashMap<
-        smithay::reexports::wayland_server::backend::ObjectId,
-        (Point<f64, Logical>, smithay::utils::Size<i32, Logical>),
-    >,
+    pub pending_recenter:
+        HashMap<smithay::reexports::wayland_server::backend::ObjectId, PendingRecenter>,
 
     // -- global: focus/navigation --
     pub focus_history: Vec<Window>,

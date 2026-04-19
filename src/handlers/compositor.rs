@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use crate::grabs::{ResizeState, has_left, has_top};
 use crate::handlers::layer_shell::LayerDestroyedMarker;
-use crate::state::{ClientState, DriftWm, FocusTarget};
+use crate::state::{ClientState, DriftWm, FocusTarget, PendingRecenter};
 use driftwm::window_ext::WindowExt;
 use smithay::utils::Rectangle;
 use smithay::xwayland::XWaylandClientData;
@@ -419,7 +419,9 @@ impl CompositorHandler for DriftWm {
                 // avoids firing while the client is still reporting the
                 // pre-exit size (which would re-center around the big fit
                 // size and place the window far off-screen).
-                if let Some(&(target_center, pre_exit_size)) = self.pending_recenter.get(&root.id()) {
+                if let Some(&PendingRecenter { target_center, pre_exit_size }) =
+                    self.pending_recenter.get(&root.id())
+                {
                     let geo = window.geometry();
                     if geo.size.w > 0 && geo.size.h > 0 && geo.size != pre_exit_size {
                         let bar = self.window_ssd_bar(&window);

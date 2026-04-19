@@ -7,7 +7,7 @@ use smithay::{
 
 use driftwm::config;
 use driftwm::window_ext::WindowExt;
-use super::DriftWm;
+use super::{DriftWm, PendingRecenter};
 
 /// Per-window fit state stored in the surface data_map via Mutex.
 /// Some(size) = currently fit, holding the pre-fit size.
@@ -176,7 +176,13 @@ impl DriftWm {
         window.exit_fit_configure(saved_size);
         self.space.map_element(window.clone(), new_loc, false);
 
-        self.pending_recenter.insert(wl_surface.id(), (center, pre_exit_size));
+        self.pending_recenter.insert(
+            wl_surface.id(),
+            PendingRecenter {
+                target_center: center,
+                pre_exit_size,
+            },
+        );
     }
 
     pub fn toggle_fit_window(&mut self, window: &Window) {
