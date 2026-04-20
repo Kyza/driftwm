@@ -180,12 +180,10 @@ fn shadow_uniforms_precise(
 const CORNER_CLIP_SRC: &str = include_str!("../shaders/corner_clip.glsl");
 
 pub const CORNER_CLIP_UNIFORMS: &[UniformName<'static>] = &[
-    UniformName { name: Cow::Borrowed("u_size"), type_: UniformType::_2f },
-    UniformName { name: Cow::Borrowed("u_geo"), type_: UniformType::_4f },
-    UniformName { name: Cow::Borrowed("u_radius"), type_: UniformType::_1f },
-    UniformName { name: Cow::Borrowed("u_scale"), type_: UniformType::_1f },
-    UniformName { name: Cow::Borrowed("u_clip_top"), type_: UniformType::_1f },
-    UniformName { name: Cow::Borrowed("u_clip_shadow"), type_: UniformType::_1f },
+    UniformName { name: Cow::Borrowed("niri_scale"), type_: UniformType::_1f },
+    UniformName { name: Cow::Borrowed("geo_size"), type_: UniformType::_2f },
+    UniformName { name: Cow::Borrowed("corner_radius"), type_: UniformType::_4f },
+    UniformName { name: Cow::Borrowed("input_to_geo"), type_: UniformType::Matrix3x3 },
 ];
 
 pub fn compile_corner_clip_shader(renderer: &mut GlesRenderer) -> Option<GlesTexProgram> {
@@ -538,55 +536,55 @@ fn compose_lock_frame(
     elements
 }
 
-/// Push window surface elements with corner-clip shader applied to the toplevel buffer.
-/// Non-toplevel sub-surfaces (popups, subsurfaces) pass through as plain Window elements.
+/// Wrap every surface element of a window in the corner-clip shader and push
+/// into `target`. The clip applies uniformly to the root toplevel and every
+/// subsurface, so clients that render content via subsurfaces (Firefox
+/// dmabuf, HW-accelerated video) get rounded corners the same as simple
+/// single-surface clients.
 ///
-/// `geo`: if `None`, uses the buffer's own size as `u_geo` (SSD — buffer = content).
-/// If `Some`, uses the window geometry (CSD — content may be offset within buffer).
+/// `geometry` is the window's geometry rect in screen-logical pre-zoom
+/// coords — i.e. where the content rect ends up on the output before zoom.
+/// Pixels outside this rect are discarded by the shader, which doubles as
+/// the CSD-shadow strip mask the old `u_clip_shadow` uniform used to do.
+///
+/// `corner_radius` is per-corner in pre-zoom physical pixels, ordered
+/// `(top_left, top_right, bottom_right, bottom_left)`. Pass `0` on any
+/// corner that should stay square (e.g. top corners under an SSD title
+/// bar).
 #[allow(clippy::too_many_arguments)]
 fn push_corner_clipped_elements(
     target: &mut Vec<OutputRenderElements>,
     elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>>,
-    wl_surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     shader: &GlesTexProgram,
-    geo: Option<Rectangle<i32, Logical>>,
-    radius: f32,
-    clip_top: f32,
-    clip_shadow: f32,
-    clip_all_corners: bool,
+    geometry: Rectangle<f64, Logical>,
+    corner_radius: [f32; 4],
     zoom: f64,
     output_scale: f64,
 ) {
-    let toplevel_id = smithay::backend::renderer::element::Id::from_wayland_resource(wl_surface);
-    let effective_scale = (output_scale * zoom) as f32;
+    let niri_scale = (output_scale * zoom) as f32;
+    // Clamp radii so a tiny window doesn't get corners wider than half its
+    // side. `max_r` is guarded against ≤0 since a degenerate window can
+    // briefly have zero size and `clamp(lo, hi)` panics if `lo > hi`.
+    let max_r = ((geometry.size.w.min(geometry.size.h) as f32) * 0.5).max(0.0);
+    let clamped = [
+        corner_radius[0].clamp(0.0, max_r),
+        corner_radius[1].clamp(0.0, max_r),
+        corner_radius[2].clamp(0.0, max_r),
+        corner_radius[3].clamp(0.0, max_r),
+    ];
     for elem in elems {
-        if *elem.id() == toplevel_id {
-            let buf = elem.buffer_size();
-            let (gx, gy, gw, gh) = match geo {
-                Some(g) => (g.loc.x as f32, g.loc.y as f32, g.size.w as f32, g.size.h as f32),
-                None => (0.0, 0.0, buf.w as f32, buf.h as f32),
-            };
-            let clamped_radius = radius.min(gw.min(gh) * 0.5).max(0.0);
-            let uniforms = vec![
-                Uniform::new("u_size", (buf.w as f32, buf.h as f32)),
-                Uniform::new("u_geo", (gx, gy, gw, gh)),
-                Uniform::new("u_radius", clamped_radius),
-                Uniform::new("u_scale", effective_scale),
-                Uniform::new("u_clip_top", clip_top),
-                Uniform::new("u_clip_shadow", clip_shadow),
-            ];
-            target.push(OutputRenderElements::CsdWindow(PixelSnapRescaleElement::from_element(
-                RoundedCornerElement::new(elem, shader.clone(), uniforms, clamped_radius as f64, clip_all_corners),
-                Point::<i32, Physical>::from((0, 0)),
-                zoom,
-            )));
-        } else {
-            target.push(OutputRenderElements::Window(PixelSnapRescaleElement::from_element(
+        target.push(OutputRenderElements::CsdWindow(PixelSnapRescaleElement::from_element(
+            RoundedCornerElement::new(
                 elem,
-                Point::<i32, Physical>::from((0, 0)),
-                zoom,
-            )));
-        }
+                shader.clone(),
+                geometry,
+                clamped,
+                output_scale,
+                niri_scale,
+            ),
+            Point::<i32, Physical>::from((0, 0)),
+            zoom,
+        )));
     }
 }
 
@@ -730,14 +728,22 @@ pub fn compose_frame(
                 }
             }
 
-            // Window surface elements — clip bottom corners to match title bar rounding
+            // Window surface elements — only the bottom corners round
+            // (the title bar covers the top edge).
             if let Some(ref shader) = state.render.corner_clip_shader {
                 let radius = state.config.decorations.corner_radius as f32;
                 if radius > 0.0 {
-                    // SSD: buffer = content, only bottom corners clipped
+                    let wg = window.geometry();
+                    let geometry = Rectangle::new(
+                        Point::<f64, Logical>::from((
+                            render_loc.x + wg.loc.x as f64,
+                            render_loc.y + wg.loc.y as f64,
+                        )),
+                        Size::<f64, Logical>::from((wg.size.w as f64, wg.size.h as f64)),
+                    );
                     push_corner_clipped_elements(
-                        target, elems, &wl_surface, shader,
-                        None, radius, 0.0, 0.0, false, zoom, output_scale,
+                        target, elems, shader,
+                        geometry, [0.0, 0.0, radius, radius], zoom, output_scale,
                     );
                 } else {
                     push_plain_elements(target, elems, zoom);
@@ -828,14 +834,20 @@ pub fn compose_frame(
             let bare = matches!(effective, driftwm::config::DecorationMode::None);
 
             if !bare && !is_fullscreen {
-                // Always run the clip shader — even at radius=0 we need
-                // clip_shadow=1 to zero out the CSD shadow padding, otherwise
-                // the client's shadow stacks under our compositor shadow and
-                // looks twice as dark. The corner-clip branch is inert at
-                // radius=0, so this is safe.
+                // Clip pixels outside the geometry rect even when radius=0,
+                // so a CSD client's own shadow (drawn in a subsurface beyond
+                // geometry) doesn't stack under our compositor shadow and
+                // double it up.
+                let geometry = Rectangle::new(
+                    Point::<f64, Logical>::from((
+                        render_loc.x + geo.loc.x as f64,
+                        render_loc.y + geo.loc.y as f64,
+                    )),
+                    Size::<f64, Logical>::from((geo.size.w as f64, geo.size.h as f64)),
+                );
                 push_corner_clipped_elements(
-                    target, elems, &wl_surface, shader,
-                    Some(geo), radius, 1.0, 1.0, true, zoom, output_scale,
+                    target, elems, shader,
+                    geometry, [radius, radius, radius, radius], zoom, output_scale,
                 );
 
                 // Compositor shadow behind CSD windows

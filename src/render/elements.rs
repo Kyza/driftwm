@@ -8,7 +8,7 @@ use smithay::{
             texture::TextureRenderElement,
             utils::RescaleRenderElement,
         },
-        gles::{GlesError, GlesFrame, GlesRenderer, GlesTexProgram, GlesTexture, Uniform, element::PixelShaderElement},
+        gles::{GlesError, GlesFrame, GlesRenderer, GlesTexProgram, GlesTexture, Uniform, UniformValue, element::PixelShaderElement},
         utils::{CommitCounter, DamageSet, OpaqueRegions},
     },
     utils::{Logical, Physical, Point, Rectangle, Scale, Size, Transform},
@@ -301,63 +301,204 @@ render_elements! {
 // Instead we construct them directly using the existing Background/Tile variants.
 // Helpers below create the elements and wrap them in the correct variant.
 
-/// Wrapper element that applies a rounded-corner clipping shader to a window's root surface.
+/// Wraps a `WaylandSurfaceRenderElement` and clips it to a rounded-rectangle
+/// geometry shared by all elements of the same window. Every surface of a
+/// window (toplevel + subsurfaces) is wrapped, so the clip applies uniformly
+/// even when the client renders content into a subsurface (Firefox, apps
+/// with HW-accelerated video/GL).
+///
+/// Port of niri's `ClippedSurfaceRenderElement`; simplified for driftwm's
+/// single-radius decoration model (per-corner radii still supported so SSD
+/// can zero the top corners under the title bar). Matrix math is niri's,
+/// including the viewporter `src` correction. Non-`Normal` surface
+/// transforms fall back to passthrough (no clip applied) — no driftwm-
+/// supported client currently sets one, but silently clipping a rotated
+/// buffer would be visibly wrong.
+///
+/// Storage:
+/// - `geometry` is in screen-logical pre-zoom coords (output-relative),
+///   same coord space as the element location passed at build time.
+/// - `corner_radius` is `(top_left, top_right, bottom_right, bottom_left)`
+///   in logical pixels (matches the `geo_size` uniform units; the shader
+///   multiplies both against `niri_scale` for the AA band).
+/// - `output_scale` feeds `inner.geometry(scale)` at draw time to get the
+///   element's pre-zoom physical rect in the same space as `geometry`
+///   converted via `to_physical_precise_round(output_scale)`.
+/// - `niri_scale` is `output_scale * zoom` — keeps the AA band ~1 output
+///   pixel wide regardless of canvas zoom.
 pub struct RoundedCornerElement {
     inner: WaylandSurfaceRenderElement<GlesRenderer>,
     shader: GlesTexProgram,
-    uniforms: Vec<Uniform<'static>>,
-    corner_radius: f64,
-    clip_top: bool,
+    geometry: Rectangle<f64, Logical>,
+    corner_radius: [f32; 4],
+    output_scale: f64,
+    niri_scale: f32,
 }
 
 impl RoundedCornerElement {
     pub fn new(
         inner: WaylandSurfaceRenderElement<GlesRenderer>,
         shader: GlesTexProgram,
-        uniforms: Vec<Uniform<'static>>,
-        corner_radius: f64,
-        clip_top: bool,
+        geometry: Rectangle<f64, Logical>,
+        corner_radius: [f32; 4],
+        output_scale: f64,
+        niri_scale: f32,
     ) -> Self {
-        Self { inner, shader, uniforms, corner_radius, clip_top }
+        Self { inner, shader, geometry, corner_radius, output_scale, niri_scale }
+    }
+
+    fn has_rounding(&self) -> bool {
+        self.corner_radius.iter().any(|r| *r > 0.0)
+    }
+
+    /// Per-corner square cut-out rects in geometry-local physical pixels at
+    /// the given scale. Used for `opaque_regions`; +1 pixel covers the
+    /// smoothstep fringe so we never claim a fading pixel as opaque.
+    /// Zero-radius corners produce zero-sized rects (no cut).
+    fn corner_cutouts(&self, scale: Scale<f64>) -> [Rectangle<i32, Physical>; 4] {
+        let geo: Rectangle<i32, Physical> = self.geometry.to_physical_precise_round(scale);
+        let r_px = |r: f32| {
+            if r <= 0.0 { 0 } else { (r as f64 * scale.x).ceil() as i32 + 1 }
+        };
+        let (w, h) = (geo.size.w, geo.size.h);
+        let rtl = r_px(self.corner_radius[0]);
+        let rtr = r_px(self.corner_radius[1]);
+        let rbr = r_px(self.corner_radius[2]);
+        let rbl = r_px(self.corner_radius[3]);
+        [
+            Rectangle::new((0, 0).into(), (rtl, rtl).into()),
+            Rectangle::new((w - rtr, 0).into(), (rtr, rtr).into()),
+            Rectangle::new((w - rbr, h - rbr).into(), (rbr, rbr).into()),
+            Rectangle::new((0, h - rbl).into(), (rbl, rbl).into()),
+        ]
+    }
+
+    fn compute_uniforms(&self) -> Vec<Uniform<'static>> {
+        // Matrix uses physical units throughout — the ratios cancel when
+        // normalizing to geo-space, so units don't matter as long as both
+        // elem_geo and geo are the same. geo_size/corner_radius uniforms
+        // must be in logical pixels to pair with `niri_scale = output_scale
+        // * zoom`, so the shader's AA band lands at one output pixel.
+        let scale = Scale::from(self.output_scale);
+        let elem_geo = self.inner.geometry(scale);
+        let geo: Rectangle<i32, Physical> = self.geometry.to_physical_precise_round(scale);
+
+        let elem_x = elem_geo.loc.x as f32;
+        let elem_y = elem_geo.loc.y as f32;
+        let elem_w = elem_geo.size.w.max(1) as f32;
+        let elem_h = elem_geo.size.h.max(1) as f32;
+
+        let geo_x = geo.loc.x as f32;
+        let geo_y = geo.loc.y as f32;
+        let geo_w = geo.size.w.max(1) as f32;
+        let geo_h = geo.size.h.max(1) as f32;
+
+        let buf = self.inner.buffer_size();
+        let buf_w = (buf.w.max(1)) as f32;
+        let buf_h = (buf.h.max(1)) as f32;
+
+        let view = self.inner.view();
+        let src_x = view.src.loc.x as f32;
+        let src_y = view.src.loc.y as f32;
+        let src_w = (view.src.size.w.max(1.0)) as f32;
+        let src_h = (view.src.size.h.max(1.0)) as f32;
+
+        // Combined matrix: buffer_uv → geometry-normalized [0,1]².
+        //   uv → (uv * buf - src_loc) / src           (undo viewporter)
+        //      → src_uv * elem / geo + (elem_loc - geo_loc) / geo
+        let sx = (buf_w / src_w) * (elem_w / geo_w);
+        let sy = (buf_h / src_h) * (elem_h / geo_h);
+        let tx = -(src_x / src_w) * (elem_w / geo_w) + (elem_x - geo_x) / geo_w;
+        let ty = -(src_y / src_h) * (elem_h / geo_h) + (elem_y - geo_y) / geo_h;
+
+        // Column-major 3x3: cols stored back-to-back.
+        let input_to_geo: [f32; 9] = [
+            sx, 0.0, 0.0,
+            0.0, sy, 0.0,
+            tx, ty, 1.0,
+        ];
+
+        let geo_size_logical = (
+            self.geometry.size.w as f32,
+            self.geometry.size.h as f32,
+        );
+
+        vec![
+            Uniform::new("niri_scale", self.niri_scale),
+            Uniform::new("geo_size", geo_size_logical),
+            Uniform::new(
+                "corner_radius",
+                (
+                    self.corner_radius[0],
+                    self.corner_radius[1],
+                    self.corner_radius[2],
+                    self.corner_radius[3],
+                ),
+            ),
+            Uniform::new(
+                "input_to_geo",
+                UniformValue::Matrix3x3 {
+                    matrices: vec![input_to_geo],
+                    transpose: false,
+                },
+            ),
+        ]
     }
 }
 
 impl Element for RoundedCornerElement {
-    fn id(&self) -> &smithay::backend::renderer::element::Id { self.inner.id() }
+    fn id(&self) -> &Id { self.inner.id() }
     fn current_commit(&self) -> CommitCounter { self.inner.current_commit() }
     fn location(&self, scale: Scale<f64>) -> Point<i32, Physical> { self.inner.location(scale) }
     fn src(&self) -> Rectangle<f64, smithay::utils::Buffer> { self.inner.src() }
     fn transform(&self) -> Transform { self.inner.transform() }
     fn geometry(&self, scale: Scale<f64>) -> Rectangle<i32, Physical> { self.inner.geometry(scale) }
+
     fn damage_since(
-        &self, scale: Scale<f64>, commit: Option<CommitCounter>,
+        &self,
+        scale: Scale<f64>,
+        commit: Option<CommitCounter>,
     ) -> DamageSet<i32, Physical> {
-        self.inner.damage_since(scale, commit)
+        // Damage intersected with the clipped region: pixels outside geometry
+        // are zeroed by the shader, so damage there can never change output.
+        let damage = self.inner.damage_since(scale, commit);
+        let mut geo = self.geometry.to_physical_precise_round(scale);
+        geo.loc -= self.geometry(scale).loc;
+        damage
+            .into_iter()
+            .filter_map(|rect| rect.intersection(geo))
+            .collect()
     }
-    fn opaque_regions(
-        &self, scale: Scale<f64>,
-    ) -> OpaqueRegions<i32, Physical> {
+
+    fn opaque_regions(&self, scale: Scale<f64>) -> OpaqueRegions<i32, Physical> {
         let regions = self.inner.opaque_regions(scale);
-        if regions.is_empty() || self.corner_radius <= 0.0 {
+        if regions.is_empty() {
             return regions;
         }
-        let geo = self.geometry(scale);
-        // +1 to cover anti-aliased fringe from smoothstep
-        let r = (self.corner_radius * scale.x).ceil() as i32 + 1;
-        let (w, h) = (geo.size.w, geo.size.h);
-        if w <= 2 * r || h <= 2 * r {
-            return regions;
+        // Translate geometry rect to be relative to the element's origin
+        // (opaque_regions are element-local in smithay's convention).
+        let mut geo = self.geometry.to_physical_precise_round(scale);
+        geo.loc -= self.geometry(scale).loc;
+        let clipped: Vec<_> = regions
+            .into_iter()
+            .filter_map(|rect| rect.intersection(geo))
+            .collect();
+        if clipped.is_empty() || !self.has_rounding() {
+            return clipped.into_iter().collect();
         }
-        let mut corners = Vec::with_capacity(4);
-        if self.clip_top {
-            corners.push(Rectangle::new((0, 0).into(), (r, r).into()));
-            corners.push(Rectangle::new((w - r, 0).into(), (r, r).into()));
-        }
-        corners.push(Rectangle::new((0, h - r).into(), (r, r).into()));
-        corners.push(Rectangle::new((w - r, h - r).into(), (r, r).into()));
-        let rects: Vec<_> = regions.into_iter().collect();
-        Rectangle::subtract_rects_many_in_place(rects, corners).into_iter().collect()
+        // Subtract the rounded-corner square cutouts (in geometry-local
+        // coords) offset into element-local coords.
+        let offset = geo.loc;
+        let corners: Vec<Rectangle<i32, Physical>> = self
+            .corner_cutouts(scale)
+            .into_iter()
+            .map(|mut r| { r.loc += offset; r })
+            .collect();
+        Rectangle::subtract_rects_many(clipped, corners)
+            .into_iter()
+            .collect()
     }
+
     fn alpha(&self) -> f32 { self.inner.alpha() }
     fn kind(&self) -> Kind { self.inner.kind() }
 }
@@ -370,17 +511,26 @@ impl RenderElement<GlesRenderer> for RoundedCornerElement {
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
         opaque_regions: &[Rectangle<i32, Physical>],
-        _user_data: Option<&smithay::utils::user_data::UserDataMap>,
+        user_data: Option<&smithay::utils::user_data::UserDataMap>,
     ) -> Result<(), GlesError> {
-        frame.override_default_tex_program(self.shader.clone(), self.uniforms.clone());
-        let result = self.inner.draw(frame, src, dst, damage, opaque_regions, _user_data);
+        // The input_to_geo math doesn't compensate for non-identity buffer
+        // transforms. For rotated/flipped surfaces we'd clip against the
+        // wrong edges — fall back to the default tex program so at least
+        // the content is visible. No driftwm-supported client sets this
+        // today; if one starts to, port niri's transform matrix chain.
+        if self.inner.transform() != Transform::Normal {
+            return self.inner.draw(frame, src, dst, damage, opaque_regions, user_data);
+        }
+        frame.override_default_tex_program(self.shader.clone(), self.compute_uniforms());
+        let result = self.inner.draw(frame, src, dst, damage, opaque_regions, user_data);
         frame.clear_tex_program_override();
         result
     }
 
     fn underlying_storage(
-        &self, renderer: &mut GlesRenderer,
-    ) -> Option<smithay::backend::renderer::element::UnderlyingStorage<'_>> {
+        &self,
+        renderer: &mut GlesRenderer,
+    ) -> Option<UnderlyingStorage<'_>> {
         self.inner.underlying_storage(renderer)
     }
 }

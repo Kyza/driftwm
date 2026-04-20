@@ -349,6 +349,24 @@ impl CompositorHandler for DriftWm {
                             crate::handlers::unset_tiled_states(toplevel);
                         } else {
                             crate::handlers::set_tiled_states(toplevel);
+                            // Configure with explicit size alongside Tiled.
+                            // SCTK (Alacritty) reads "Tiled + size=None" as
+                            // "stay at current tile size" rather than "pick
+                            // preferred"; libadwaita can desync its reported
+                            // geometry from its buffer size across the same
+                            // transition. Anchoring to the current size keeps
+                            // both stable through the flip. Only overwrite if
+                            // neither pending nor current state already has a
+                            // size — avoids clobbering a rule-forced size or
+                            // an ack'd configure from an earlier commit.
+                            let already_sized =
+                                toplevel.with_pending_state(|s| s.size.is_some());
+                            if !already_sized {
+                                let current_size = geo.size;
+                                toplevel.with_pending_state(|state| {
+                                    state.size = Some(current_size);
+                                });
+                            }
                         }
 
                         toplevel.send_configure();
