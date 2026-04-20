@@ -266,8 +266,9 @@ impl DriftWm {
 
         // Non-widget canvas windows (visually above canvas layers)
         let under = self.surface_under(canvas_pos, Some(false));
-        if under.is_some() {
+        if let Some((ref focus, _)) = under {
             self.pointer_over_layer = false;
+            self.raise_x11_for_hover(&focus.0);
             pointer.motion(self, under, &MotionEvent { location: canvas_pos, serial, time });
             pointer.frame(self);
             self.update_decoration_cursor(canvas_pos);
@@ -284,8 +285,9 @@ impl DriftWm {
 
         // Widget canvas windows (visually below canvas layers)
         let under = self.surface_under(canvas_pos, Some(true));
-        if under.is_some() {
+        if let Some((ref focus, _)) = under {
             self.pointer_over_layer = false;
+            self.raise_x11_for_hover(&focus.0);
             pointer.motion(self, under, &MotionEvent { location: canvas_pos, serial, time });
             pointer.frame(self);
             self.update_decoration_cursor(canvas_pos);

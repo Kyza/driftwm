@@ -430,6 +430,16 @@ pub struct DriftWm {
     pub x11_display: Option<u32>,
     /// XWayland client handle, stored for reconnect/cleanup.
     pub xwayland_client: Option<smithay::reexports::wayland_server::Client>,
+    /// Last X11 surface that received `set_activated(true)`. Used by
+    /// `focus_changed` to deactivate the previously-focused X11 window
+    /// regardless of which code path issued the focus change.
+    pub last_x11_focused: Option<X11Surface>,
+    /// Last X11 surface raised in XWayland's internal stack on hover.
+    /// XWayland routes pointer events (motion/enter/leave) using its X
+    /// server stacking, not the compositor's visual stacking. Without
+    /// raising on hover, hover indicators appear on the wrong X11 client
+    /// when overlapping windows on the canvas.
+    pub last_x11_hover_raised: Option<X11Surface>,
 
     // -- global: SSD title bar double-click --
     pub last_titlebar_click: Option<(
@@ -661,6 +671,8 @@ impl DriftWm {
             x11_override_redirect: Vec::new(),
             x11_display: None,
             xwayland_client: None,
+            last_x11_focused: None,
+            last_x11_hover_raised: None,
             last_titlebar_click: None,
         }
     }
@@ -703,6 +715,8 @@ impl DriftWm {
         for fs in self.fullscreen.values() {
             self.space.raise_element(&fs.window, false);
         }
+
+        self.update_x11_stacking_order();
     }
 
     /// Find the Window in space whose wl_surface matches the given one.
@@ -742,11 +756,12 @@ impl DriftWm {
 
     /// Raise a window and set keyboard focus, with modal focus redirect.
     /// If the window has a modal child, focus goes to that child instead.
+    /// X11 `_NET_WM_STATE_FOCUSED` is synced via `SeatHandler::focus_changed`,
+    /// which fires from `keyboard.set_focus` regardless of caller.
     pub fn raise_and_focus(&mut self, window: &Window, serial: smithay::utils::Serial) {
         self.space.raise_element(window, true);
         self.enforce_below_windows();
 
-        // Resolve focus target before borrowing keyboard (modal redirect)
         let focus_surface = self
             .topmost_modal_child(window)
             .or(Some(window.clone()))
@@ -756,12 +771,75 @@ impl DriftWm {
         keyboard.set_focus(self, focus_surface, serial);
     }
 
+    /// Update `_NET_WM_STATE_FOCUSED` on X11 windows when keyboard focus moves.
+    /// Driven from `SeatHandler::focus_changed`, so every focus transition is
+    /// covered regardless of which call site invoked `keyboard.set_focus`.
+    pub fn sync_x11_activated(&mut self, new_focus: Option<&WlSurface>) {
+        let new_x11 = new_focus.and_then(|s| self.find_x11_surface_by_wl(s));
+
+        if let Some(prev) = self.last_x11_focused.take()
+            && Some(&prev) != new_x11.as_ref()
+            && !prev.is_override_redirect()
+        {
+            let _ = prev.set_activated(false);
+        }
+
+        if let Some(x11) = new_x11
+            && !x11.is_override_redirect()
+        {
+            let _ = x11.set_activated(true);
+            self.last_x11_focused = Some(x11);
+        }
+    }
+
     /// Find a mapped window wrapping the given X11 surface.
     pub fn find_x11_window(&self, x11: &X11Surface) -> Option<Window> {
         self.space
             .elements()
             .find(|w| w.x11_surface() == Some(x11))
             .cloned()
+    }
+
+    /// Raise the X11 window owning `wl_surface` to the top of XWayland's
+    /// internal stack — *only* on the X11 side, never touches compositor
+    /// visual stacking. Called from pointer-focus dispatch so hover events
+    /// route to the visually-topmost X11 client when overlapping windows
+    /// share canvas coords. No-op if the surface isn't an X11 window or is
+    /// already top, and skipped for override-redirect surfaces.
+    pub fn raise_x11_for_hover(&mut self, wl_surface: &WlSurface) {
+        let Some(x11) = self.find_x11_surface_by_wl(wl_surface) else { return };
+        if x11.is_override_redirect() {
+            return;
+        }
+        if self.last_x11_hover_raised.as_ref() == Some(&x11) {
+            return;
+        }
+        let Some(xwm) = self.x11_wm.as_mut() else { return };
+        if let Err(err) = xwm.raise_window(&x11) {
+            tracing::warn!(?err, "Failed to raise X11 window for hover");
+            return;
+        }
+        self.last_x11_hover_raised = Some(x11);
+    }
+
+    /// Push the compositor's current bottom→top window order into XWayland
+    /// so the X server's stacking matches the visual stacking. Required for
+    /// correct pointer-event routing between overlapping X11 clients.
+    /// Skips the call for ≤1 X11 windows — nothing to reorder, and the
+    /// underlying `grab_server` round-trip can delay input events.
+    pub fn update_x11_stacking_order(&mut self) {
+        let Some(xwm) = self.x11_wm.as_mut() else { return };
+        let order: Vec<X11Surface> = self
+            .space
+            .elements()
+            .filter_map(|w| w.x11_surface().cloned())
+            .collect();
+        if order.len() < 2 {
+            return;
+        }
+        if let Err(err) = xwm.update_stacking_order_upwards(order.iter()) {
+            tracing::warn!(?err, "Failed to sync X11 stacking order");
+        }
     }
 
     /// Find the X11Surface whose underlying wl_surface matches the given one.
@@ -842,12 +920,27 @@ impl DriftWm {
 
         // No transient_for: use anchor-based X11→canvas coordinate mapping.
         // X11 OR windows position themselves in absolute root coords — find
-        // the topmost managed X11 window as an anchor to translate.
-        let anchor = self.space.elements().rev().find_map(|w| {
-            let x11 = w.x11_surface()?;
-            let canvas_loc = self.space.element_location(w)?;
-            Some((canvas_loc, x11.geometry().loc))
-        });
+        // a managed X11 window as an anchor to translate. All X11 clients
+        // share one wl_client (XWayland), so we can't filter by wl_client.
+        // Instead, prefer the X11 window currently raised in XWayland's
+        // stack on hover — that's the window the pointer was over when the
+        // OR was created, and almost always the OR's actual creator. Fall
+        // back to the topmost X11 in compositor space if nothing was hovered.
+        let pick_anchor = |target: Option<&X11Surface>| {
+            self.space.elements().rev().find_map(|w| {
+                let x11 = w.x11_surface()?;
+                if let Some(t) = target
+                    && x11 != t
+                {
+                    return None;
+                }
+                let canvas_loc = self.space.element_location(w)?;
+                Some((canvas_loc, x11.geometry().loc))
+            })
+        };
+        let anchor = pick_anchor(self.last_x11_hover_raised.as_ref())
+            .or_else(|| pick_anchor(self.last_x11_focused.as_ref()))
+            .or_else(|| pick_anchor(None));
         if let Some((anchor_canvas, anchor_x11)) = anchor {
             return anchor_canvas + (or_geo.loc - anchor_x11);
         }

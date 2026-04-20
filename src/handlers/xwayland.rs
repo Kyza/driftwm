@@ -170,6 +170,7 @@ impl XwmHandler for DriftWm {
 
             self.focus_history.retain(|w| w != &smithay_window);
             self.space.unmap_elem(&smithay_window);
+            self.update_x11_stacking_order();
         }
     }
 
