@@ -65,9 +65,7 @@
 
         cargoLock = {
           lockFile = ./Cargo.lock;
-          outputHashes = {
-            "smithay-drm-extras-0.1.0" = "sha256-k3x4jRv20c2/TCgURomWgR/5oGpNOnUqnvyO+zovfvQ=";
-          };
+          allowBuiltinFetchGit = true;
         };
 
         inherit nativeBuildInputs buildInputs;
