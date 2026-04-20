@@ -78,6 +78,7 @@ pub fn spawn_xwayland(
             data.xwayland_client = None;
             data.x11_display = None;
             data.x11_override_redirect.clear();
+            data.or_root_anchor = None;
             // SAFETY: no other threads mutate env vars concurrently
             unsafe { std::env::remove_var("DISPLAY"); }
 

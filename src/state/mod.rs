@@ -440,6 +440,13 @@ pub struct DriftWm {
     /// raising on hover, hover indicators appear on the wrong X11 client
     /// when overlapping windows on the canvas.
     pub last_x11_hover_raised: Option<X11Surface>,
+    /// Canvas position corresponding to X11 root (0, 0) for OR-only X11
+    /// apps (e.g. jgmenu) where no managed X11 window in `space` provides
+    /// an anchor. Pinned to the cursor when the first OR maps and held
+    /// stable for the rest of the OR session so submenus keep their
+    /// relative offsets to the parent menu. Cleared when the last OR
+    /// unmaps.
+    pub or_root_anchor: Option<Point<i32, Logical>>,
 
     // -- global: SSD title bar double-click --
     pub last_titlebar_click: Option<(
@@ -673,6 +680,7 @@ impl DriftWm {
             xwayland_client: None,
             last_x11_focused: None,
             last_x11_hover_raised: None,
+            or_root_anchor: None,
             last_titlebar_click: None,
         }
     }
@@ -842,12 +850,48 @@ impl DriftWm {
         }
     }
 
+    /// Briefly redirect keyboard focus to `or_wl`, deliver Esc press+release,
+    /// then restore the prior focus. Used for X11 popup-menu dismissal where
+    /// the popup app (jgmenu, dmenu) has an X11 KeyboardGrab and dismisses
+    /// on Esc — but doesn't install a Wayland-side xwayland-keyboard-grab,
+    /// so Esc only reaches it when its wl_surface holds keyboard focus.
+    pub fn synth_esc_to_or(&mut self, or_wl: WlSurface) {
+        use smithay::backend::input::KeyState;
+        use smithay::input::keyboard::{FilterResult, Keycode};
+        let keyboard = self.seat.get_keyboard().unwrap();
+        let prev = keyboard.current_focus();
+        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+        keyboard.set_focus(self, Some(FocusTarget(or_wl)), serial);
+
+        let time = self.start_time.elapsed().as_millis() as u32;
+        let esc = Keycode::new(9); // evdev KEY_ESC (1) + 8
+        let keyboard = self.seat.get_keyboard().unwrap();
+        keyboard.input::<(), _>(self, esc, KeyState::Pressed,
+            smithay::utils::SERIAL_COUNTER.next_serial(), time,
+            |_, _, _| FilterResult::Forward);
+        keyboard.input::<(), _>(self, esc, KeyState::Released,
+            smithay::utils::SERIAL_COUNTER.next_serial(), time,
+            |_, _, _| FilterResult::Forward);
+
+        let keyboard = self.seat.get_keyboard().unwrap();
+        keyboard.set_focus(self, prev, smithay::utils::SERIAL_COUNTER.next_serial());
+    }
+
     /// Find the X11Surface whose underlying wl_surface matches the given one.
+    /// Searches both managed windows (in `space`) and override-redirect popups
+    /// — the latter matters for the xwayland-keyboard-grab protocol, which
+    /// hands us an OR's wl_surface when the X11 client calls XGrabKeyboard.
     pub fn find_x11_surface_by_wl(&self, wl: &WlSurface) -> Option<X11Surface> {
         self.space
             .elements()
             .filter_map(|w| w.x11_surface().cloned())
             .find(|x11| x11.wl_surface().as_ref() == Some(wl))
+            .or_else(|| {
+                self.x11_override_redirect
+                    .iter()
+                    .find(|x11| x11.wl_surface().as_ref() == Some(wl))
+                    .cloned()
+            })
     }
 
     /// Compute the canvas position of an override-redirect X11 surface.
@@ -943,6 +987,13 @@ impl DriftWm {
             .or_else(|| pick_anchor(None));
         if let Some((anchor_canvas, anchor_x11)) = anchor {
             return anchor_canvas + (or_geo.loc - anchor_x11);
+        }
+
+        // OR-only X11 apps (jgmenu, dmenu-style popups) have no managed
+        // window to anchor against. Use the cached cursor-pinned anchor
+        // so the menu chain keeps consistent relative offsets.
+        if let Some(anchor) = self.or_root_anchor {
+            return anchor + or_geo.loc;
         }
 
         // No X11 windows at all: center in viewport

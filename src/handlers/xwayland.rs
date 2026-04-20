@@ -131,12 +131,45 @@ impl XwmHandler for DriftWm {
 
     fn mapped_override_redirect_window(&mut self, _xwm: XwmId, window: X11Surface) {
         tracing::debug!("X11 override-redirect mapped: {:?}", window.class());
+
+        // Pin the X11-root → canvas anchor when an OR-only X11 app (no
+        // managed X11 window in space) opens its first popup. Place this
+        // first OR at the cursor; subsequent OR windows in the chain
+        // translate from that anchor so their relative offsets are kept.
+        if self.or_root_anchor.is_none()
+            && !self
+                .space
+                .elements()
+                .any(|w| w.x11_surface().is_some())
+        {
+            let cursor = self.seat.get_pointer().unwrap().current_location();
+            let cursor_i32 = smithay::utils::Point::from((cursor.x as i32, cursor.y as i32));
+            self.or_root_anchor = Some(cursor_i32 - window.geometry().loc);
+        }
+
         self.x11_override_redirect.push(window);
     }
 
     fn unmapped_window(&mut self, _xwm: XwmId, window: X11Surface) {
         tracing::info!("X11 unmapped: {:?}", window.class());
         self.x11_override_redirect.retain(|w| w != &window);
+        if self.x11_override_redirect.is_empty() {
+            self.or_root_anchor = None;
+        }
+
+        // If this OR currently held wl_keyboard focus (via the
+        // xwayland-keyboard-grab protocol), clear focus so it doesn't
+        // dangle on a dead surface after the grab tears down.
+        if let Some(wl) = window.wl_surface() {
+            let keyboard = self.seat.get_keyboard().unwrap();
+            if keyboard.current_focus().is_some_and(|f| f.0 == wl) {
+                keyboard.set_focus(
+                    self,
+                    None::<FocusTarget>,
+                    SERIAL_COUNTER.next_serial(),
+                );
+            }
+        }
 
         if let Some(smithay_window) = self.find_x11_window(&window) {
             if let Some(wl_surface) = smithay_window.wl_surface() {
