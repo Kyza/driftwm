@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::f64::consts::FRAC_1_SQRT_2;
 use std::hash::Hash;
 
-use smithay::input::keyboard::ModifiersState;
+use smithay::input::keyboard::{Keysym, ModifiersState};
 use smithay::utils::Transform;
 
 pub const BTN_LEFT: u32 = 0x110;
@@ -442,6 +442,59 @@ pub fn glob_matches(pat: &str, val: &str) -> bool {
     true
 }
 
+/// Controls which compositor keybindings are forwarded to the focused window
+/// instead of being handled by the compositor.
+///
+/// - `None`  — default; compositor handles everything.
+/// - `All`   — all keys forwarded (game/fullscreen-friendly).
+/// - `Only`  — only the listed combos are forwarded; all others stay active.
+#[derive(Clone, Debug, Default)]
+pub enum PassKeys {
+    #[default]
+    None,
+    All,
+    Only(Vec<KeyCombo>),
+}
+
+impl PassKeys {
+    /// Returns `true` if the given raw key event should be forwarded to the app.
+    /// Constructs and normalises a `KeyCombo` internally — no import needed at call sites.
+    pub fn allows_raw(&self, modifiers: &ModifiersState, sym: Keysym) -> bool {
+        match self {
+            PassKeys::None => false,
+            PassKeys::All  => true,
+            PassKeys::Only(combos) => {
+                let mut current = KeyCombo {
+                    modifiers: Modifiers::from_state(modifiers),
+                    sym,
+                };
+                current.normalize();
+                combos.iter().any(|c| c == &current)
+            }
+        }
+    }
+
+    /// Merge `other` into `self`.
+    /// `All` is sticky-on; `Only` lists are unioned; `None` is a no-op.
+    pub fn merge_from(&mut self, other: &PassKeys) {
+        match (&*self, other) {
+            (_, PassKeys::None)                              => {}  // other adds nothing
+            (PassKeys::All, _)                               => {}  // already maximally permissive
+            (_, PassKeys::All)                               => *self = PassKeys::All,
+            (PassKeys::None, PassKeys::Only(v))              => *self = PassKeys::Only(v.clone()),
+            (PassKeys::Only(existing), PassKeys::Only(extra)) => {
+                let mut merged = existing.clone();
+                for c in extra {
+                    if !merged.contains(c) {
+                        merged.push(c.clone());
+                    }
+                }
+                *self = PassKeys::Only(merged);
+            }
+        }
+    }
+}
+
 /// Parsed window rule from config.
 #[derive(Clone, Debug)]
 pub struct WindowRule {
@@ -465,9 +518,7 @@ pub struct WindowRule {
     pub decoration: Option<DecorationMode>,
     pub blur: bool,
     pub opacity: Option<f64>,
-    /// When true, compositor keybindings are not intercepted while this window
-    /// has focus. Keys are forwarded directly to the application (game-friendly).
-    pub pass_keys: bool,
+    pub pass_keys: PassKeys,
 }
 
 impl WindowRule {
@@ -500,7 +551,7 @@ pub struct AppliedWindowRule {
     pub decoration: Option<DecorationMode>,
     pub blur: bool,
     pub opacity: Option<f64>,
-    pub pass_keys: bool,
+    pub pass_keys: PassKeys,
     /// Explicit window position requested by the matching rule(s).
     pub position: Option<(i32, i32)>,
     /// Explicit window size requested by the matching rule(s).
@@ -509,12 +560,13 @@ pub struct AppliedWindowRule {
 
 impl AppliedWindowRule {
     /// Overlay `rule`'s effects on top of `self`.
-    /// Boolean flags (widget, blur, pass_keys) are sticky-on.
+    /// Boolean flags (widget, blur) are sticky-on.
+    /// `pass_keys`: `All` is sticky-on; `Only` lists are unioned (see `PassKeys::merge_from`).
     /// Scalar fields (decoration, opacity, position, size) use last-wins.
     pub fn merge_from(&mut self, rule: &WindowRule) {
-        if rule.widget    { self.widget    = true; }
-        if rule.blur      { self.blur      = true; }
-        if rule.pass_keys { self.pass_keys = true; }
+        if rule.widget { self.widget = true; }
+        if rule.blur   { self.blur   = true; }
+        self.pass_keys.merge_from(&rule.pass_keys);
         if rule.decoration.is_some() {
             self.decoration = rule.decoration.clone();
         }
@@ -531,7 +583,7 @@ impl From<&WindowRule> for AppliedWindowRule {
             decoration: rule.decoration.clone(),
             blur:       rule.blur,
             opacity:    rule.opacity,
-            pass_keys:  rule.pass_keys,
+            pass_keys:  rule.pass_keys.clone(),
             position:   rule.position,
             size:       rule.size,
         }

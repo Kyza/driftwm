@@ -10,8 +10,10 @@ in config order and merged together:
 
 - **Scalar fields** (`decoration`, `opacity`, `position`, `size`): last-wins —
   a later rule overrides an earlier one.
-- **Boolean flags** (`widget`, `blur`, `pass_keys`): sticky-on — once set by
+- **Boolean flags** (`widget`, `blur`): sticky-on — once set by
   any matching rule, the flag stays set regardless of later rules.
+- **`pass_keys`**: `All` is sticky-on; `Only` lists are unioned across
+  rules (see [pass_keys details](#pass_keys-details)).
 
 This lets you compose independent rules for the same window:
 
@@ -74,7 +76,7 @@ Regex patterns use the `regex` crate (RE2-compatible, no backreferences).
 | `decoration` | string        | inherited | Override decoration mode (see below) |
 | `blur`       | `bool`        | `false`   | Blur compositor background behind this window |
 | `opacity`    | `0.0`–`1.0`   | `1.0`     | Window transparency (1.0 = fully opaque) |
-| `pass_keys`  | `bool`        | `false`   | Forward all keys to the app, bypassing compositor shortcuts |
+| `pass_keys`  | `bool` or `["combo", …]` | `false` | Forward keys to the app — see below |
 
 ### `decoration` values
 
@@ -87,14 +89,24 @@ Regex patterns use the `regex` crate (RE2-compatible, no backreferences).
 
 ### `pass_keys` details
 
-When `pass_keys = true` and this window has keyboard focus:
+`pass_keys` controls which compositor keybindings are forwarded to the focused
+window instead of being handled by the compositor:
 
-- **All** key events are forwarded directly to the application.
-- Compositor keybindings (`mod+q`, `mod+f`, custom bindings, etc.) **do not fire**.
-- VT switching (`Ctrl+Alt+F1`–`F12`) **still works** regardless.
+| Value | Behaviour |
+|-------|-----------|
+| `false` (or omit) | Compositor handles all keybindings normally (default) |
+| `true` | **All** keys forwarded — no compositor shortcuts fire while this window has focus |
+| `["mod+q", "ctrl+q"]` | **Only** the listed combos are forwarded; all other shortcuts stay active |
 
-This is primarily useful for games and game launchers where global shortcuts
-would accidentally close the window or trigger unintended compositor actions.
+VT switching (`Ctrl+Alt+F1`–`F12`) **always stays in the compositor** regardless
+of `pass_keys`.
+
+Key combo syntax is the same as in `[keybindings]`: `mod+key`, `ctrl+shift+key`, etc.
+
+When multiple rules match the same window:
+- `true` is sticky-on: if **any** rule sets `pass_keys = true`, the result is `true`.
+- `["combo", …]` lists are **unioned** across all matching rules.
+- `true` overrides a list: if one rule says `true` and another says `["mod+q"]`, the result is `true`.
 
 ## Examples
 
@@ -123,6 +135,16 @@ blur    = true
 [[window_rules]]
 app_id    = "steam_app_*"
 pass_keys = true
+```
+
+### Game: only let specific keys through
+
+Keep `mod+q` and other compositor shortcuts active, but pass `ctrl+q` to the game:
+
+```toml
+[[window_rules]]
+xclass    = "factorio"
+pass_keys = ["ctrl+q", "ctrl+s"]
 ```
 
 ### Game: pass all keys through (X11/XWayland)

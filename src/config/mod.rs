@@ -19,7 +19,7 @@ use smithay::utils::{Logical, Point, Transform};
 use defaults::{default_bindings, default_gesture_bindings, default_mouse_bindings};
 use toml::{
     ConfigFile, DecorationFileConfig, EffectsFileConfig, BackendFileConfig, OutputRuleFile, WindowRuleFile,
-    expand_tilde,
+    PassKeysFile, expand_tilde,
 };
 
 /// Env vars the compositor sets as toolkit fallbacks.
@@ -395,7 +395,7 @@ impl Config {
             .window_rules
             .unwrap_or_default()
             .into_iter()
-            .filter_map(parse_window_rule)
+            .filter_map(|r| parse_window_rule(r, mod_key))
             .collect();
 
         let output_configs = {
@@ -647,7 +647,7 @@ fn parse_pattern(s: String) -> Pattern {
     Pattern::Glob(s)
 }
 
-fn parse_window_rule(r: WindowRuleFile) -> Option<WindowRule> {
+fn parse_window_rule(r: WindowRuleFile, mod_key: ModKey) -> Option<WindowRule> {
     if r.app_id.is_none() && r.title.is_none() && r.xclass.is_none() && r.xinstance.is_none() {
         tracing::warn!("Window rule has no match criteria (app_id/title/xclass/xinstance), skipping");
         return None;
@@ -690,7 +690,30 @@ fn parse_window_rule(r: WindowRuleFile) -> Option<WindowRule> {
                 v
             }
         }),
-        pass_keys: r.pass_keys,
+        pass_keys: match r.pass_keys {
+            None | Some(PassKeysFile::Bool(false)) => PassKeys::None,
+            Some(PassKeysFile::Bool(true)) => PassKeys::All,
+            Some(PassKeysFile::Keys(strs)) => {
+                let combos: Vec<KeyCombo> = strs
+                    .iter()
+                    .filter_map(|s| match parse_key_combo(s, mod_key) {
+                        Ok(mut c) => {
+                            c.normalize();
+                            Some(c)
+                        }
+                        Err(e) => {
+                            tracing::warn!("pass_keys: invalid key combo '{s}': {e}");
+                            None
+                        }
+                    })
+                    .collect();
+                if combos.is_empty() {
+                    PassKeys::None
+                } else {
+                    PassKeys::Only(combos)
+                }
+            }
+        },
     })
 }
 

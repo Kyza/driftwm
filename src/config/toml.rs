@@ -169,6 +169,20 @@ pub(super) struct DecorationFileConfig {
     pub default_mode: Option<String>,
 }
 
+/// Flexible `pass_keys` TOML value: `true`/`false` OR a list of key-combo strings.
+///
+/// Examples:
+/// ```toml
+/// pass_keys = true                        # forward ALL keys
+/// pass_keys = ["mod+q", "ctrl+q"]         # forward only these combos
+/// ```
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub(super) enum PassKeysFile {
+    Bool(bool),
+    Keys(Vec<String>),
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct WindowRuleFile {
@@ -185,10 +199,10 @@ pub(super) struct WindowRuleFile {
     pub decoration: Option<String>,
     pub blur: Option<bool>,
     pub opacity: Option<f64>,
-    /// When true, compositor keybindings are not intercepted while this window
-    /// has focus. Keys are forwarded directly to the application (game-friendly).
-    #[serde(default)]
-    pub pass_keys: bool,
+    /// `true` — forward all keys to the app (game-friendly).
+    /// `["mod+q", "ctrl+q"]` — forward only those combos; all others stay active.
+    /// Omit or `false` — compositor handles everything normally (default).
+    pub pass_keys: Option<PassKeysFile>,
 }
 
 #[derive(Deserialize, Default)]

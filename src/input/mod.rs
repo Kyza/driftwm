@@ -200,21 +200,25 @@ impl DriftWm {
                         return FilterResult::Intercept(None);
                     }
 
-                    // pass_keys: focused window opted out of global shortcuts.
-                    // Forward all keys to the app (game-friendly). VT-switching
-                    // above is still handled regardless.
-                    // Uses live config so config-reload takes effect immediately.
-                    let pass_keys = state.focused_window().is_some_and(|w| {
-                        let app_id   = w.app_id_or_class().unwrap_or_default();
-                        let title    = w.window_title().unwrap_or_default();
-                        let xclass   = w.x11_surface().map(|x| x.class()).unwrap_or_default();
+                    // pass_keys: forward compositor keybindings to the focused window.
+                    // PassKeys::All  — forward everything (game-friendly).
+                    // PassKeys::Only — forward only the listed combos; rest stay active.
+                    // VT-switching above is always handled regardless.
+                    // Uses live config so a config-reload takes effect immediately.
+                    let focused_pass_keys = state.focused_window().and_then(|w| {
+                        let app_id    = w.app_id_or_class().unwrap_or_default();
+                        let title     = w.window_title().unwrap_or_default();
+                        let xclass    = w.x11_surface().map(|x| x.class()).unwrap_or_default();
                         let xinstance = w.x11_surface().map(|x| x.instance()).unwrap_or_default();
                         state
                             .config
                             .resolve_window_rules(&app_id, &title, &xclass, &xinstance)
-                            .is_some_and(|r| r.pass_keys)
+                            .map(|r| r.pass_keys)
                     });
-                    if pass_keys {
+                    if focused_pass_keys
+                        .as_ref()
+                        .is_some_and(|pk| pk.allows_raw(modifiers, sym))
+                    {
                         return FilterResult::Forward;
                     }
 
