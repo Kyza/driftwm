@@ -19,6 +19,7 @@ use std::time::Duration;
 use crate::render::build_cursor_elements;
 use crate::backend::Backend;
 use crate::state::{DriftWm, init_output_state};
+use smithay::wayland::seat::WaylandFocus;
 
 /// Initialize the winit backend: create a window, set up the output, and
 /// start the render loop timer.
@@ -204,6 +205,21 @@ pub fn init_winit(
             let mut age = backend.buffer_age().unwrap_or(0);
             if !data.render.cached_tile_bg.is_empty() && (camera_moved || zoom_changed) {
                 age = 0;
+            }
+            // Force full redraw when animated background is visible through transparent windows.
+            // Without this, buffer-age optimisation reuses the stale composited result for
+            // transparent windows — the background appears frozen inside them.
+            if age > 0 && data.render.background_is_animated {
+                let has_transparent = data.space.elements().any(|w| {
+                    w.wl_surface()
+                        .as_deref()
+                        .and_then(driftwm::config::applied_rule)
+                        .and_then(|r| r.opacity)
+                        .is_some_and(|o| o < 1.0)
+                });
+                if has_transparent {
+                    age = 0;
+                }
             }
             let render_ok = match backend.bind() {
                 Ok((renderer, mut framebuffer)) => {

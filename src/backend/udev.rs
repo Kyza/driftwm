@@ -38,6 +38,7 @@ use driftwm::config::{OutputMode as ConfigOutputMode, OutputPosition};
 use crate::render::OutputRenderElements;
 use crate::backend::Backend;
 use crate::state::{DriftWm, init_output_state};
+use smithay::wayland::seat::WaylandFocus;
 
 const SUPPORTED_COLOR_FORMATS: &[Fourcc] = &[
     Fourcc::Xrgb8888,
@@ -988,6 +989,25 @@ fn render_frame(
     // doesn't know all elements moved, so without this we get partial-update artifacts.
     if camera_moved || zoom_changed {
         compositor.reset_buffer_ages();
+    }
+
+    // Force full redraw when animated background is visible through transparent windows.
+    // smithay's buffer-age optimisation skips recompositing windows whose surface content
+    // didn't change — but transparent windows show the background through them, so when
+    // the background shader advances a frame the stale composited result is reused and
+    // the background appears "frozen" inside those windows.
+    // Fix: reset buffer ages so every pixel is redrawn from scratch this frame.
+    if data.render.background_is_animated {
+        let has_transparent = data.space.elements().any(|w| {
+            w.wl_surface()
+                .as_deref()
+                .and_then(driftwm::config::applied_rule)
+                .and_then(|r| r.opacity)
+                .is_some_and(|o| o < 1.0)
+        });
+        if has_transparent {
+            compositor.reset_buffer_ages();
+        }
     }
 
     // Take renderer out to split borrow from state
