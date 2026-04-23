@@ -474,10 +474,10 @@ impl WindowRule {
     /// Returns true if this rule matches all of the supplied window identifiers.
     /// Fields that are `None` are treated as wildcards (match anything).
     pub fn matches(&self, app_id: &str, title: &str, xclass: &str, xinstance: &str) -> bool {
-        let app_ok  = self.app_id   .as_ref().map_or(true, |p| p.matches(app_id));
-        let ttl_ok  = self.title    .as_ref().map_or(true, |p| p.matches(title));
-        let cls_ok  = self.xclass   .as_ref().map_or(true, |p| p.matches(xclass));
-        let inst_ok = self.xinstance.as_ref().map_or(true, |p| p.matches(xinstance));
+        let app_ok  = self.app_id   .as_ref().is_none_or(|p| p.matches(app_id));
+        let ttl_ok  = self.title    .as_ref().is_none_or(|p| p.matches(title));
+        let cls_ok  = self.xclass   .as_ref().is_none_or(|p| p.matches(xclass));
+        let inst_ok = self.xinstance.as_ref().is_none_or(|p| p.matches(xinstance));
         app_ok && ttl_ok && cls_ok && inst_ok
     }
 
