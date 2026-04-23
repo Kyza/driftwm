@@ -328,6 +328,11 @@
 #                 none:       SSD — completely bare, no chrome at all
 #   blur        — true: blur background behind this window (default: false)
 #   opacity     — 0.0–1.0: window transparency (default: 1.0, fully opaque)
+#   pass_keys   — true: compositor keybindings are NOT intercepted while this
+#                 window has focus. All key events are forwarded directly to the
+#                 app. Useful for games where global shortcuts (e.g. close-window)
+#                 would interfere. VT switching (Ctrl+Alt+F1–F12) still works.
+#                 (default: false)
 #
 # Examples:
 # # [[window_rules]]
@@ -341,6 +346,11 @@
 # # app_id = "Alacritty"
 # # opacity = 0.85
 # # blur = true
+#
+# # Game: disable compositor shortcuts so ctrl+q / mod+q don't close the window
+# # [[window_rules]]
+# # app_id = "steam_app_*"
+# # pass_keys = true
 #
 # # Hide iced/libcosmic utility windows (same app_id as main window)
 # # [[window_rules]]

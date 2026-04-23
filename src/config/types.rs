@@ -403,6 +403,9 @@ pub struct WindowRule {
     pub decoration: Option<DecorationMode>,
     pub blur: bool,
     pub opacity: Option<f64>,
+    /// When true, compositor keybindings are not intercepted while this window
+    /// has focus. Keys are forwarded directly to the application (game-friendly).
+    pub pass_keys: bool,
 }
 
 /// Runtime rule state stored in a surface's data_map after matching.
@@ -412,6 +415,7 @@ pub struct AppliedWindowRule {
     pub decoration: Option<DecorationMode>,
     pub blur: bool,
     pub opacity: Option<f64>,
+    pub pass_keys: bool,
 }
 
 impl From<&WindowRule> for AppliedWindowRule {
@@ -421,6 +425,7 @@ impl From<&WindowRule> for AppliedWindowRule {
             decoration: rule.decoration.clone(),
             blur: rule.blur,
             opacity: rule.opacity,
+            pass_keys: rule.pass_keys,
         }
     }
 }

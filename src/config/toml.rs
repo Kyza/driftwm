@@ -181,6 +181,10 @@ pub(super) struct WindowRuleFile {
     pub decoration: Option<String>,
     pub blur: Option<bool>,
     pub opacity: Option<f64>,
+    /// When true, compositor keybindings are not intercepted while this window
+    /// has focus. Keys are forwarded directly to the application (game-friendly).
+    #[serde(default)]
+    pub pass_keys: bool,
 }
 
 #[derive(Deserialize, Default)]

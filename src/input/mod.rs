@@ -26,6 +26,7 @@ use smithay::utils::{Logical, Rectangle};
 use smithay::wayland::compositor::{RegionAttributes, RectangleKind};
 
 use driftwm::canvas::{ScreenPos, screen_to_canvas};
+use driftwm::window_ext::WindowExt;
 use crate::decorations::DecorationHit;
 use crate::state::{DriftWm, FocusTarget};
 
@@ -197,6 +198,21 @@ impl DriftWm {
                             tracing::warn!("Failed to switch to VT{vt}: {e}");
                         }
                         return FilterResult::Intercept(None);
+                    }
+
+                    // pass_keys: focused window opted out of global shortcuts.
+                    // Forward all keys to the app (game-friendly). VT-switching
+                    // above is still handled regardless.
+                    let pass_keys = state.focused_window().is_some_and(|w| {
+                        let app_id = w.app_id_or_class().unwrap_or_default();
+                        let title = w.window_title().unwrap_or_default();
+                        state
+                            .config
+                            .match_window_rule(&app_id, &title)
+                            .is_some_and(|r| r.pass_keys)
+                    });
+                    if pass_keys {
+                        return FilterResult::Forward;
                     }
 
                     if let Some(action) = state.config.lookup(modifiers, sym) {

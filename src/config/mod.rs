@@ -660,6 +660,7 @@ fn parse_window_rule(r: WindowRuleFile) -> Option<WindowRule> {
                 v
             }
         }),
+        pass_keys: r.pass_keys,
     })
 }
 
