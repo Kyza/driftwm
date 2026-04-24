@@ -242,6 +242,9 @@ pub(crate) fn process_blur_requests(
     let context_id = renderer.context_id();
     let geom_gen = state.render.blur_geometry_generation;
     let camera_gen = state.render.blur_camera_generation;
+    // Animated background shaders update per frame but the element Id is stable,
+    // so the bg_hash optimisation can't detect the change — force recompute each frame.
+    let animated_bg = state.render.background_is_animated;
 
     // Precompute per-request behind depth (index into all_elements where "below this window" begins)
     let behind_starts: Vec<usize> = blur_requests.iter().map(|req| {
@@ -282,7 +285,7 @@ pub(crate) fn process_blur_requests(
         let camera_dirty = matches!(req.layer, BlurLayer::Overlay | BlurLayer::Top)
             && cache.last_camera_generation != camera_gen;
 
-        if background_changed || geom_changed || camera_dirty {
+        if background_changed || geom_changed || camera_dirty || animated_bg {
             cache.dirty = true;
         }
         cache.last_background_hash = bg_hash;

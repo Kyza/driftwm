@@ -53,8 +53,10 @@ pub enum Action {
     ZoomOut,
     ZoomReset,
     ZoomToFit,
+    ZoomToFitSnapped,
     ToggleFullscreen,
     FitWindow,
+    FitWindowSnapped,
     SendToOutput(Direction),
     FocusCenter,
     ReloadConfig,
@@ -207,7 +209,17 @@ pub struct MouseBinding {
 #[derive(Clone, Debug)]
 pub enum MouseAction {
     MoveWindow,
+    /// Drag every window connected to the focused one via snap adjacency
+    /// (edge-flush with `snap_gap`). The cluster is computed on demand at
+    /// drag start; use a separate binding from `MoveWindow` so that grabbing
+    /// a window never implicitly drags neighbors.
+    MoveSnappedWindows,
     ResizeWindow,
+    /// Resize the focused window and propagate the delta to every snapped
+    /// neighbor in its cluster. Same opt-in shape as `MoveSnappedWindows`:
+    /// grabbing a window never implicitly resizes neighbors — the user
+    /// must bind this action explicitly.
+    ResizeWindowSnapped,
     PanViewport,
     Zoom,
     CenterNearest,
@@ -243,6 +255,9 @@ pub enum ContinuousAction {
     Zoom,
     MoveWindow,
     ResizeWindow,
+    /// Same as `ResizeWindow` plus cluster propagation: delta applies to the
+    /// focused window's snap-cluster neighbors. Opt-in via explicit binding.
+    ResizeWindowSnapped,
 }
 
 /// Actions for threshold gesture triggers (fire once after accumulation).

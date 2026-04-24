@@ -313,6 +313,14 @@ impl XwmHandler for DriftWm {
 
         let output = self.active_output().unwrap();
         let serial = SERIAL_COUNTER.next_serial();
+        // Same as the xdg_shell path: honor the config flag so CSD/X11
+        // border drags behave identically to SSD border drags.
+        let cluster_resize = if self.config.decoration_resize_snapped {
+            self.cluster_snapshot_for_resize(&smithay_window, xdg_edge)
+        } else {
+            crate::state::ClusterResizeSnapshot::empty()
+        };
+        let constraints = crate::grabs::SizeConstraints::for_window(&smithay_window);
         let grab = crate::grabs::ResizeSurfaceGrab {
             start_data,
             window: smithay_window,
@@ -324,6 +332,8 @@ impl XwmHandler for DriftWm {
             last_clamped_location: pointer.current_location(),
             last_x11_configure: None,
             snap: driftwm::snap::SnapState::default(),
+            constraints,
+            cluster_resize,
         };
         pointer.set_grab(self, grab, serial, Focus::Clear);
     }
@@ -343,12 +353,16 @@ impl XwmHandler for DriftWm {
             location: pointer.current_location(),
         };
 
+        // Client-initiated X11 move: same reasoning as xdg_shell —
+        // always single-window.
         let initial_window_location = self.space.element_location(&smithay_window).unwrap();
         let grab = crate::grabs::MoveSurfaceGrab::new(
             start_data,
             smithay_window,
             initial_window_location,
             self.active_output().unwrap(),
+            Vec::new(),
+            std::collections::HashSet::new(),
         );
         let serial = SERIAL_COUNTER.next_serial();
         pointer.set_grab(self, grab, serial, Focus::Clear);
@@ -410,13 +424,13 @@ impl XwmHandler for DriftWm {
 
     fn maximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
         if let Some(w) = self.find_x11_window(&window) {
-            self.toggle_fit_window(&w);
+            self.decoration_toggle_fit(&w);
         }
     }
 
     fn unmaximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
         if let Some(w) = self.find_x11_window(&window) {
-            self.unfit_window(&w);
+            self.decoration_unfit(&w);
         }
     }
 

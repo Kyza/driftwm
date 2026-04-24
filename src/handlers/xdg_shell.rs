@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashSet;
 
 use crate::grabs::{MoveSurfaceGrab, ResizeState, ResizeSurfaceGrab};
 use crate::state::{DriftWm, FocusTarget, output_state};
@@ -151,7 +152,7 @@ impl XdgShellHandler for DriftWm {
             .find(|w| w.wl_surface().as_deref() == Some(&wl_surface))
             .cloned();
         if let Some(window) = window {
-            self.toggle_fit_window(&window);
+            self.decoration_toggle_fit(&window);
         }
     }
 
@@ -163,7 +164,7 @@ impl XdgShellHandler for DriftWm {
             .find(|w| w.wl_surface().as_deref() == Some(&wl_surface))
             .cloned();
         if let Some(window) = window {
-            self.unfit_window(&window);
+            self.decoration_unfit(&window);
         }
     }
 
@@ -258,12 +259,17 @@ impl XdgShellHandler for DriftWm {
             return;
         };
 
+        // Client-initiated xdg move_request: the client asked to move itself,
+        // not its cluster neighbors. Clients don't know about clusters, so
+        // always single-window.
         let initial_window_location = self.space.element_location(&window).unwrap();
         let grab = MoveSurfaceGrab::new(
             start_data,
             window,
             initial_window_location,
             self.active_output().unwrap(),
+            Vec::new(),
+            HashSet::new(),
         );
         pointer.set_grab(self, grab, serial, Focus::Clear);
     }
@@ -320,6 +326,15 @@ impl XdgShellHandler for DriftWm {
 
         let output = self.active_output().unwrap();
         let last_clamped_location = start_data.location;
+        // CSD windows trigger resize through xdg_toplevel.resize() when
+        // the user drags the client-drawn border. Honor the config flag so
+        // edge-drag propagation behaves identically for SSD and CSD windows.
+        let cluster_resize = if self.config.decoration_resize_snapped {
+            self.cluster_snapshot_for_resize(&window, edges)
+        } else {
+            crate::state::ClusterResizeSnapshot::empty()
+        };
+        let constraints = crate::grabs::SizeConstraints::for_window(&window);
         let grab = ResizeSurfaceGrab {
             start_data,
             window,
@@ -331,6 +346,8 @@ impl XdgShellHandler for DriftWm {
             last_clamped_location,
             last_x11_configure: None,
             snap: driftwm::snap::SnapState::default(),
+            constraints,
+            cluster_resize,
         };
         pointer.set_grab(self, grab, serial, Focus::Clear);
     }
