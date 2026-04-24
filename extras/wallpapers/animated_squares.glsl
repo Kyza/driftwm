@@ -3,7 +3,7 @@
 // - u_camera: vec2 - camera position in canvas coordinates
 // - u_time: float - time in seconds since compositor start
 
-precision mediump float;
+precision highp float;
 
 varying vec2 v_coords;
 uniform vec2 size;
