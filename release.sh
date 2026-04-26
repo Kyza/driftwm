@@ -19,7 +19,7 @@ cp resources/driftwm-session "$STAGING/"
 cp resources/driftwm.desktop "$STAGING/"
 cp resources/driftwm-portals.conf "$STAGING/"
 cp config.example.toml "$STAGING/config.toml"
-cp extras/wallpapers/*.glsl "$STAGING/wallpapers/"
+cp -r extras/wallpapers/. "$STAGING/wallpapers/"
 
 tar czf "$ARCHIVE" "$STAGING"
 rm -rf "$STAGING"

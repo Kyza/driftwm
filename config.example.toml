@@ -131,7 +131,7 @@
 [background]
 # shader_path = "/usr/local/share/driftwm/wallpapers/dot_grid.glsl"
 # Examples:
-# # shader_path = "/usr/local/share/driftwm/wallpapers//animated_squares.glsl"   # animated shader
+# # shader_path = "/usr/local/share/driftwm/wallpapers/animated/fast_smoke.glsl"   # animated shader
 # # tile_path = "~/Pictures/Wallpapers/wallpaper.jpg"     # tiled image (mutually exclusive with shader)
 
 # Keyboard bindings: "Modifier+...+Keysym" = "action [arg]"

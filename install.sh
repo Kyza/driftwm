@@ -112,8 +112,10 @@ do_install() {
         bold "Keeping existing $SYSCONFDIR/driftwm/config.toml"
     fi
 
-    for f in "$SRCDIR"/wallpapers/*.glsl; do
-        [ -f "$f" ] && install -Dm644 "$f" "$DATADIR/driftwm/wallpapers/$(basename "$f")"
+    for f in "$SRCDIR"/wallpapers/*.glsl "$SRCDIR"/wallpapers/*/*.glsl; do
+        [ -f "$f" ] || continue
+        rel="${f#"$SRCDIR"/wallpapers/}"
+        install -Dm644 "$f" "$DATADIR/driftwm/wallpapers/$rel"
     done
 
     green "driftwm installed successfully!"
