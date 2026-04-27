@@ -69,10 +69,10 @@ void main() {
     float foam = smoothstep(0.55, 0.85, r) * 0.5
                + smoothstep(0.6, 0.9, detail) * 0.3;
 
-    // Base color: dark slate with slight blue-green tint
-    vec3 dark = vec3(0.10, 0.11, 0.13);
-    vec3 mid  = vec3(0.15, 0.17, 0.19);
-    vec3 foam_color = vec3(0.55, 0.55, 0.50);
+    // Desaturated dark teal water with warm cream foam
+    vec3 dark = vec3(0.18, 0.21, 0.24);
+    vec3 mid  = vec3(0.23, 0.26, 0.29);
+    vec3 foam_color = vec3(0.84, 0.81, 0.72);
 
     // Subtle depth variation in the dark areas
     float depth = fbm(canvas * 0.5);
