@@ -8,21 +8,15 @@
 
 https://github.com/user-attachments/assets/df24e442-6ad0-4520-9491-cb666da06d05
 
-Traditional window managers arrange windows to fit your screen. driftwm flips this: windows float on an infinite 2D canvas and you move the viewport around them. Designed with laptops in mind — trackpad support keeps getting better while display size stays limited, so treating your screen as a camera onto a larger canvas makes sense. Pan, zoom, and navigate with trackpad gestures. No workspaces, no tiling — just drift.
+Traditional window managers arrange windows to fit your screen. Stacking compositors do so by piling windows on top of each other; tiling compositors do so by squeezing them to fit and leaning heavily on workspaces.
+
+`driftwm` is an infinite-canvas compositor: windows live at their native size on an infinite 2D canvas, and your display is a camera viewing it. When two windows come close, they snap together, forming implicit groups that can be moved, resized, and viewed together.
+
+Designed with laptops in mind: navigation and window management are trackpad-first; the infinite canvas makes the most of a small screen.
 
 Built on [smithay](https://github.com/Smithay/smithay). Inspired by [vxwm](https://codeberg.org/wh1tepearl/vxwm), [hevel](https://git.sr.ht/~dlm/hevel), and [niri](https://github.com/YaLTeR/niri).
 
 **WARNING:** This is experimental software. Primarily built with AI. Use at your own risk.
-
-## Concept
-
-Think Figma or Google Maps, but for your desktop. Your screen is a viewport
-onto an infinite canvas where windows live. Pan around to find what you need,
-zoom out to see everything at once, zoom back in to focus.
-
-Zoom is cursor-anchored — the point under your cursor stays fixed as you zoom
-in or out, just like pinch-to-zoom on a map. Multiple monitors are just
-multiple viewports on the same canvas.
 
 ## Features
 
@@ -68,14 +62,13 @@ with no window there — useful for areas with pinned widgets.
 All 4-finger navigation gestures also work as `Mod` + 3-finger for smaller
 trackpads.
 
-### Move, resize, maximize
+### Snapping
 
 https://github.com/user-attachments/assets/363d7252-dc28-4cf0-9c30-b7ca2e617972
 
-Move windows by doubletap-swiping on them. Resize with `Alt` + 3-finger swipe.
-Windows snap to nearby edges magnetically during drag. Drag to the viewport
-edge and the canvas auto-pans — handy for rearranging windows just beyond the
-visible area.
+Move with 3-finger doubletap-swipe or `Alt` + drag. Resize with `Alt` + 3-finger swipe. Snapping kicks in as edges approach each other. Drag past the viewport edge and the canvas auto-pans.
+
+**Snapped windows form a cluster.** Two benefits: neighbors stay visible at your view's edge for spatial context, and `Shift` + any move/resize/fit action acts on the whole cluster. Shuffle a layout in one drag, resize a row of panes proportionally, or scope an overview to just the cluster (`Mod+Shift+W`). No explicit grouping to manage.
 
 **Tip:** while dragging a window, keyboard shortcuts still work. Use `Mod+1-4`
 to jump to a bookmark or `Mod+A` to go home — your held window comes with you.
@@ -85,17 +78,21 @@ zoom to 1.0, and resizes the window to fill the screen. Toggle again to
 restore. Fullscreen (`Mod+F`) is a viewport mode, not a window state — any canvas
 action (launching an app, navigating) naturally exits it.
 
-| Input                         | Action                        |
-| ----------------------------- | ----------------------------- |
-| 3-finger doubletap-swipe      | Move window                   |
-| `Alt` + LMB drag              | Move window                   |
-| `Alt` + 3-finger swipe        | Resize window                 |
-| `Alt` + RMB drag              | Resize window                 |
-| `Alt` + MMB click / `Mod+M`   | Fit window (maximize/restore) |
-| `Alt` + 2-finger pinch-in/out | Fit window                    |
-| `Alt` + 3-finger pinch-in/out | Toggle fullscreen             |
-| `Mod` + MMB click / `Mod+F`   | Toggle fullscreen             |
-| `Mod+Shift` + arrow           | Nudge window 20px             |
+| Input                                     | Action                        |
+| ----------------------------------------- | ----------------------------- |
+| 3-finger doubletap-swipe                  | Move window                   |
+| `Alt` + LMB drag                          | Move window                   |
+| `Alt+Shift` + LMB drag                    | Move snapped windows          |
+| `Alt` + 3-finger swipe                    | Resize window                 |
+| `Alt+Shift` + 3-finger swipe              | Resize snapped window         |
+| `Alt` + RMB drag                          | Resize window                 |
+| `Alt` + MMB click / `Mod+M`               | Fit window (maximize/restore) |
+| `Alt+Shift` + MMB click / `Mod+Shift+M`   | Fit snapped window            |
+| `Mod` + 4-finger pinch in / `Mod+Shift+W` | Zoom-to-fit snapped windows   |
+| `Alt` + 2-finger pinch in/out             | Fit window                    |
+| `Alt` + 3-finger pinch in/out             | Toggle fullscreen             |
+| `Mod` + MMB click / `Mod+F`               | Toggle fullscreen             |
+| `Mod+Shift` + arrow                       | Nudge window 20px             |
 
 ### Infinite background
 
@@ -104,14 +101,20 @@ https://github.com/user-attachments/assets/9064883c-86ea-4db6-a40a-0418d2ee2f5e
 The background is part of the canvas — it scrolls and zooms with the viewport,
 not stuck to the screen. This gives spatial awareness when panning.
 
-Two modes: **GLSL shaders** (default: dot grid, or write your own (supports animated)
-— see [docs/shaders.md](docs/shaders.md)) and **tiled images** (any PNG/JPG, tiled
-infinitely across the canvas). Both are infinite by nature.
+Three modes (all rendered as shaders internally):
+
+- **`shader`** — procedural GLSL, animated or static. Default is a dot grid. See [docs/shaders.md](docs/shaders.md) to write your own. Bundled shaders live in `extras/wallpapers/{static,animated}/`.
+- **`tile`** — any PNG/JPG, tiled infinitely across the canvas.
+- **`wallpaper`** — single image stretched to fill viewport (does not scroll/zoom) — a classic desktop wallpaper.
+
+GPU cost rises with how often the background redraws: `wallpaper` renders once and stays; static shaders and tiles redraw on pan/zoom but cache when the viewport is still; animated shaders redraw every frame.
 
 ```toml
 [background]
-shader_path = "~/.config/driftwm/bg.glsl"    # custom shader
-# tile_path = "~/.config/driftwm/tile.png"   # or tiled image
+type = "shader"
+path = "~/.config/driftwm/bg.glsl"
+# Or: type = "tile",      path = "~/Pictures/tile.png"
+# Or: type = "wallpaper", path = "~/Pictures/wallpaper.jpg"
 ```
 
 ### Window rules
@@ -163,7 +166,6 @@ windows teleport to the target viewport's canvas position.
 | ----------------- | ------------------------------ |
 | `Mod+Alt` + arrow | Send window to adjacent output |
 
-
 ### Panels, docks & taskbars
 
 https://github.com/user-attachments/assets/83c2ad30-fbfa-4cf2-aa47-905826889dcb
@@ -181,7 +183,7 @@ window-search script that lets you search and jump to any open window.
 - Screenshots (grim + slurp)
 - Click-to-focus (default) or focus-follows-mouse (sloppy focus)
 - All bindings (keyboard, mouse, gesture) fully configurable via TOML
-- 30 Wayland protocols
+- 30+ Wayland protocols
 
 ## Install
 
@@ -270,28 +272,17 @@ manager integration, select "driftwm" from the session menu.
 
 ## Quick start
 
-`mod` is Super by default. Terminal and launcher are auto-detected
-(foot/alacritty/kitty, fuzzel/wofi/bemenu), can be overridden in config.
+`mod` is Super by default. Terminal and launcher are auto-detected (foot/alacritty/kitty, fuzzel/wofi/bemenu); override in config.
 
-| Shortcut           | Action                        |
-| ------------------ | ----------------------------- |
-| `mod+return`       | Open terminal                 |
-| `mod+d`            | Open launcher                 |
-| `mod+q`            | Close window                  |
-| `mod+m`            | Fit window (maximize/restore) |
-| `mod+f`            | Toggle fullscreen             |
-| `mod+c`            | Center focused window         |
-| `mod+x`            | Center window under cursor    |
-| `mod+arrow`        | Jump to nearest window        |
-| `mod+a`            | Home toggle                   |
-| `mod+w`            | Zoom-to-fit (overview)        |
-| `mod+=` / `mod+-`  | Zoom in / out                 |
-| `mod+scroll`       | Zoom at cursor                |
-| `alt+tab`          | Cycle windows                 |
-| `mod+l`            | Lock screen                   |
-| `mod+ctrl+shift+q` | Quit                          |
+| Shortcut           | Action        |
+| ------------------ | ------------- |
+| `mod+return`       | Open terminal |
+| `mod+d`            | Open launcher |
+| `mod+q`            | Close window  |
+| `mod+l`            | Lock screen   |
+| `mod+ctrl+shift+q` | Quit          |
 
-All keybindings are configurable — see [`config.example.toml`](config.example.toml).
+Feature-specific bindings (navigation, zoom, snap) are in their respective sections above.
 
 ## Configuration
 
@@ -342,7 +333,19 @@ tying it all together. Use it as a starting point or steal pieces.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). TL;DR: open an issue before writing non-trivial code, keep PRs small and focused.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+TL;DR: open an issue before writing non-trivial code, keep PRs small and focused.
+
+## Merch
+
+If you want to support the project (or just want a shirt), this is the way.
+
+<p align="center"><img src="assets/tshirt.png" width="400"></p>
+
+**100 GEL · 37 USD · 2800 RUB.** Ships worldwide from Tbilisi.
+
+Order via [Telegram](https://t.me/fiyefiyefiye), [Instagram](https://instagram.com/flwrs_in_ur_eyes), or email `2601074@gmail.com`.
 
 ## License
 
