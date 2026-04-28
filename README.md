@@ -64,7 +64,7 @@ trackpads.
 
 ### Snapping
 
-https://github.com/user-attachments/assets/363d7252-dc28-4cf0-9c30-b7ca2e617972
+https://github.com/user-attachments/assets/8a468e69-8887-4d27-8457-cdd2753948ca
 
 Move with 3-finger doubletap-swipe or `Alt` + drag. Resize with `Alt` + 3-finger swipe. Snapping kicks in as edges approach each other. Drag past the viewport edge and the canvas auto-pans.
 
@@ -96,7 +96,7 @@ action (launching an app, navigating) naturally exits it.
 
 ### Infinite background
 
-https://github.com/user-attachments/assets/9064883c-86ea-4db6-a40a-0418d2ee2f5e
+https://github.com/user-attachments/assets/6e9eb7f7-0c73-4fdd-b7aa-230b8ff0a172
 
 The background is part of the canvas — it scrolls and zooms with the viewport,
 not stuck to the screen. This gives spatial awareness when panning.
@@ -150,13 +150,7 @@ decoration = "none"
 
 ### Multi-monitor
 
-<!--
-  Video (~10s, two monitors):
-  1. Pan on one monitor, show the other monitor's outline moving on canvas
-  2. Zoom out on one monitor to a different zoom level than the other
-  3. Drag a window across the monitor boundary — it teleports to the other viewport
-  4. Mod+Alt+Arrow to send a window to the other output
--->
+https://github.com/user-attachments/assets/3f6cc3a8-a4ed-4d78-80fc-d5a92478c48f
 
 Multiple monitors are independent viewports on the same canvas. An outline on each monitor shows where the
 other monitors' viewports are. Cursor crosses between monitors freely; dragged
@@ -341,11 +335,17 @@ TL;DR: open an issue before writing non-trivial code, keep PRs small and focused
 
 If you want to support the project (or just want a shirt), this is the way.
 
-<p align="center"><img src="assets/tshirt.png" width="400"></p>
+<p align="left"><img src="assets/tshirt.png" width="400"></p>
 
-**100 GEL · 37 USD · 2800 RUB.** Ships worldwide from Tbilisi.
+XL
 
-Order via [Telegram](https://t.me/fiyefiyefiye), [Instagram](https://instagram.com/flwrs_in_ur_eyes), or email `2601074@gmail.com`.
+100 GEL · 37 USD · 2800 RUB
+
+Ships worldwide from Tbilisi.
+
+Order via [Telegram](https://t.me/fiyefiyefiye), [Instagram](https://instagram.com/flwrs_in_ur_eyes), or email [2601074@gmail.com](mailto:2601074@gmail.com).
+
+Revenue goes to me as driftwm's primary maintainer. If you've contributed substantively and want a shirt, drop me a line.
 
 ## License
 
