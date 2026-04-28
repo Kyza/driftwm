@@ -22,6 +22,9 @@ QT_QPA_PLATFORMTHEME = "qt6ct"
 layout = "us,ru"
 options = "grp:win_space_toggle"
 
+[zoom]
+reset_on_new_window = false
+
 [cursor]
 theme = "elementary"
 

@@ -31,6 +31,7 @@ use smithay::{
     utils::{DeviceFd, Transform},
     wayland::{dmabuf::DmabufFeedbackBuilder, drm_syncobj::supports_syncobj_eventfd},
 };
+use smithay::reexports::wayland_server::backend::GlobalId;
 
 use smithay_drm_extras::drm_scanner::{DrmScanEvent, DrmScanner};
 
@@ -70,6 +71,7 @@ struct SurfaceData {
     make: String,
     model: String,
     serial_number: String,
+    global: GlobalId,
 }
 
 /// Opaque handle to udev backend device data. Returned by init_udev,
@@ -565,6 +567,10 @@ pub fn init_udev(
                                     data.image_copy_capture_state.remove_output(&surface.output);
                                     data.screencopy_state.remove_output(&surface.output);
 
+                                    // Tear down the wl_output global so clients
+                                    // (wf-recorder, swayosd, etc.) see the output go away.
+                                    remove_output_global(data, surface.global);
+
                                     // Close layer surfaces on this output so clients
                                     // (swayosd, waybar, etc.) can recreate on remaining outputs
                                     for layer in smithay::desktop::layer_map_for_output(&surface.output).layers() {
@@ -851,7 +857,7 @@ fn create_surface(
     };
     output.change_current_state(Some(output_mode), Some(transform), Some(scale), Some(layout_position));
     output.set_preferred(output_mode);
-    output.create_global::<DriftWm>(dh);
+    let global = output.create_global::<DriftWm>(dh);
 
     let allocator = GbmAllocator::new(gbm.clone(), GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT);
     let compositor = match DrmCompositor::new(
@@ -962,7 +968,23 @@ fn create_surface(
         make,
         model,
         serial_number,
+        global,
     })
+}
+
+/// Tear down a `wl_output` global. Disables it now so clients see the
+/// removal event, then queues a delayed `remove_global` so any in-flight
+/// bind requests don't hit a freed global and get protocol-killed.
+fn remove_output_global(data: &mut DriftWm, global: GlobalId) {
+    data.display_handle.disable_global::<DriftWm>(global.clone());
+    let dh = data.display_handle.clone();
+    let timer = Timer::from_duration(Duration::from_secs(10));
+    if let Err(e) = data.loop_handle.insert_source(timer, move |_, _, _: &mut DriftWm| {
+        dh.remove_global::<DriftWm>(global.clone());
+        TimeoutAction::Drop
+    }) {
+        tracing::warn!("Failed to schedule wl_output global removal: {e:?}");
+    }
 }
 
 /// Render a single frame and queue it to the DRM compositor.
