@@ -70,8 +70,8 @@ Move with 3-finger doubletap-swipe or `Alt` + drag. Resize with `Alt` + 3-finger
 
 **Snapped windows form a cluster.** Two benefits: neighbors stay visible at your view's edge for spatial context, and `Shift` + any move/resize/fit action acts on the whole cluster. Shuffle a layout in one drag, resize a row of panes proportionally, or scope an overview to just the cluster (`Mod+Shift+W`). No explicit grouping to manage.
 
-**Tip:** while dragging a window, keyboard shortcuts still work. Use `Mod+1-4`
-to jump to a bookmark or `Mod+A` to go home — your held window comes with you.
+> **Tip:** while dragging a window, keyboard shortcuts still work. Use `Mod+1-4`
+> to jump to a bookmark or `Mod+A` to go home — your held window comes with you.
 
 Fit-window (`Mod+M`) is the maximize analogue — centers the viewport, resets
 zoom to 1.0, and resizes the window to fill the screen. Toggle again to
