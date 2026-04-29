@@ -260,3 +260,187 @@ fn draw_line(pixels: &mut [u8], stride: i32, x0: i32, y0: i32, x1: i32, y1: i32,
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use xdg_toplevel::ResizeEdge;
+
+    fn loc(x: i32, y: i32) -> Point<i32, Logical> {
+        Point::from((x, y))
+    }
+    fn pt(x: f64, y: f64) -> Point<f64, Logical> {
+        Point::from((x, y))
+    }
+    fn sz(w: i32, h: i32) -> Size<i32, Logical> {
+        Size::from((w, h))
+    }
+
+    const PAD: i32 = CLOSE_BTN_RIGHT_PAD;
+
+    #[test]
+    fn close_button_rect_dimensions_are_bar_height_by_bar_height() {
+        let r = close_button_rect(loc(0, 100), 400, 25);
+        assert_eq!(r.size.w, 25);
+        assert_eq!(r.size.h, 25);
+    }
+
+    #[test]
+    fn close_button_rect_top_is_bar_height_above_window_loc() {
+        let r = close_button_rect(loc(0, 100), 400, 25);
+        assert_eq!(r.loc.y, 100 - 25);
+    }
+
+    #[test]
+    fn close_button_rect_right_edge_is_width_minus_pad_from_window_left() {
+        let r = close_button_rect(loc(50, 200), 400, 25);
+        assert_eq!(r.loc.x + r.size.w, 50 + 400 - PAD);
+    }
+
+    #[test]
+    fn close_button_rect_works_with_negative_canvas_coords() {
+        let r = close_button_rect(loc(-300, -100), 200, 25);
+        assert_eq!(r.size.w, 25);
+        assert_eq!(r.size.h, 25);
+        assert_eq!(r.loc.y, -100 - 25);
+        assert_eq!(r.loc.x + r.size.w, -300 + 200 - PAD);
+    }
+
+    #[test]
+    fn title_bar_contains_point_in_bar_body_returns_true() {
+        assert!(title_bar_contains(pt(100.0, 80.0), loc(0, 100), 400, 25));
+    }
+
+    #[test]
+    fn title_bar_contains_point_in_close_button_area_returns_false() {
+        // title_bar_contains explicitly excludes the close button zone
+        assert!(!title_bar_contains(pt(370.0, 80.0), loc(0, 100), 400, 25));
+    }
+
+    #[test]
+    fn title_bar_contains_point_above_bar_returns_false() {
+        assert!(!title_bar_contains(pt(100.0, 74.0), loc(0, 100), 400, 25));
+    }
+
+    #[test]
+    fn title_bar_contains_point_at_bar_top_boundary_returns_true() {
+        // half-open interval: y >= bar_top is included
+        assert!(title_bar_contains(pt(100.0, 75.0), loc(0, 100), 400, 25));
+    }
+
+    #[test]
+    fn title_bar_contains_point_at_bar_bottom_boundary_returns_false() {
+        // half-open interval: y >= window_loc.y is excluded (client area)
+        assert!(!title_bar_contains(pt(100.0, 100.0), loc(0, 100), 400, 25));
+    }
+
+    #[test]
+    fn title_bar_contains_point_left_of_window_returns_false() {
+        assert!(!title_bar_contains(pt(-1.0, 80.0), loc(0, 100), 400, 25));
+    }
+
+    #[test]
+    fn title_bar_contains_at_left_boundary_returns_true() {
+        assert!(title_bar_contains(pt(0.0, 80.0), loc(0, 100), 400, 25));
+    }
+
+    #[test]
+    fn title_bar_contains_point_right_of_bar_body_returns_false() {
+        let bar_right = 0.0 + 400.0 - 25.0 - PAD as f64;
+        assert!(!title_bar_contains(pt(bar_right, 80.0), loc(0, 100), 400, 25));
+    }
+
+    #[test]
+    fn close_button_contains_point_inside_returns_true() {
+        assert!(close_button_contains(pt(370.0, 80.0), loc(0, 100), 400, 25));
+    }
+
+    #[test]
+    fn close_button_contains_point_in_bar_body_returns_false() {
+        assert!(!close_button_contains(pt(100.0, 80.0), loc(0, 100), 400, 25));
+    }
+
+    #[test]
+    fn close_button_contains_point_above_bar_returns_false() {
+        assert!(!close_button_contains(pt(370.0, 74.0), loc(0, 100), 400, 25));
+    }
+
+    #[test]
+    fn close_button_contains_point_below_bar_returns_false() {
+        assert!(!close_button_contains(pt(370.0, 100.0), loc(0, 100), 400, 25));
+    }
+
+    #[test]
+    fn title_bar_and_close_button_cover_disjoint_regions() {
+        let in_close = pt(370.0, 80.0);
+        assert!(close_button_contains(in_close, loc(0, 100), 400, 25));
+        assert!(!title_bar_contains(in_close, loc(0, 100), 400, 25));
+
+        let in_body = pt(100.0, 80.0);
+        assert!(title_bar_contains(in_body, loc(0, 100), 400, 25));
+        assert!(!close_button_contains(in_body, loc(0, 100), 400, 25));
+    }
+
+    // Layout: window_loc=(100,200), size=300x400, bar=25, border=8
+    // Outer bbox: x=[92,408), y=[167,608); interior: x=[100,400), y=[175,600)
+    fn edge_at(px: f64, py: f64) -> Option<ResizeEdge> {
+        resize_edge_at(pt(px, py), loc(100, 200), sz(300, 400), 25, 8)
+    }
+
+    #[test]
+    fn resize_edge_inside_window_body_returns_none() {
+        assert_eq!(edge_at(200.0, 300.0), None);
+    }
+
+    #[test]
+    fn resize_edge_inside_title_bar_returns_none() {
+        assert_eq!(edge_at(200.0, 185.0), None);
+    }
+
+    #[test]
+    fn resize_edge_outside_outer_bbox_returns_none() {
+        assert_eq!(edge_at(200.0, 100.0), None);
+        assert_eq!(edge_at(500.0, 300.0), None);
+    }
+
+    #[test]
+    fn resize_edge_top_border_above_title_bar_returns_top() {
+        // outer_top = 167, inner_top = 175 — point in [167,175) is the top strip
+        assert_eq!(edge_at(200.0, 170.0), Some(ResizeEdge::Top));
+    }
+
+    #[test]
+    fn resize_edge_bottom_border_returns_bottom() {
+        assert_eq!(edge_at(200.0, 603.0), Some(ResizeEdge::Bottom));
+    }
+
+    #[test]
+    fn resize_edge_left_border_returns_left() {
+        assert_eq!(edge_at(95.0, 300.0), Some(ResizeEdge::Left));
+    }
+
+    #[test]
+    fn resize_edge_right_border_returns_right() {
+        assert_eq!(edge_at(403.0, 300.0), Some(ResizeEdge::Right));
+    }
+
+    #[test]
+    fn resize_edge_top_left_corner_returns_top_left() {
+        assert_eq!(edge_at(95.0, 170.0), Some(ResizeEdge::TopLeft));
+    }
+
+    #[test]
+    fn resize_edge_top_right_corner_returns_top_right() {
+        assert_eq!(edge_at(403.0, 170.0), Some(ResizeEdge::TopRight));
+    }
+
+    #[test]
+    fn resize_edge_bottom_left_corner_returns_bottom_left() {
+        assert_eq!(edge_at(95.0, 603.0), Some(ResizeEdge::BottomLeft));
+    }
+
+    #[test]
+    fn resize_edge_bottom_right_corner_returns_bottom_right() {
+        assert_eq!(edge_at(403.0, 603.0), Some(ResizeEdge::BottomRight));
+    }
+}
