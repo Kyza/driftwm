@@ -120,7 +120,7 @@ pub fn spawn_xwayland(
                 if let Some(wl_surface) = w.wl_surface() {
                     let id = Resource::id(&*wl_surface);
                     data.decorations.remove(&id);
-                    data.render.csd_shadows.remove(&id);
+                    data.render.shadow_cache.remove(&id);
                     data.pending_ssd.remove(&id);
                     data.pending_center.remove(&*wl_surface);
                     data.pending_size.remove(&*wl_surface);
