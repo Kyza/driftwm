@@ -60,7 +60,7 @@ impl DriftWm {
         loop_handle: LoopHandle<'static, DriftWm>,
         loop_signal: LoopSignal,
     ) -> Self {
-        let compositor_state = CompositorState::new::<Self>(&dh);
+        let compositor_state = CompositorState::new_v6::<Self>(&dh);
         let xdg_shell_state = XdgShellState::new_with_capabilities::<Self>(
             &dh,
             [

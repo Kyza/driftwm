@@ -189,7 +189,17 @@ delegate_dmabuf!(DriftWm);
 delegate_viewporter!(DriftWm);
 
 impl FractionalScaleHandler for DriftWm {
-    fn new_fractional_scale(&mut self, _surface: WlSurface) {}
+    fn new_fractional_scale(&mut self, surface: WlSurface) {
+        let scale = self
+            .active_output()
+            .map(|o| o.current_scale().fractional_scale())
+            .unwrap_or(1.0);
+        smithay::wayland::compositor::with_states(&surface, |data| {
+            smithay::wayland::fractional_scale::with_fractional_scale(data, |fractional| {
+                fractional.set_preferred_scale(scale);
+            });
+        });
+    }
 }
 
 delegate_fractional_scale!(DriftWm);
@@ -297,7 +307,11 @@ impl PointerConstraintsHandler for DriftWm {
             return;
         }
 
-        // location is surface-local. Find the surface's canvas origin to convert.
+        // The pointer's internal canvas location must track the game's expected
+        // cursor position; otherwise, when the client briefly destroys and
+        // recreates its lock (Wine/Proton does this constantly), motion events
+        // delivered during the gap reach the surface with stale surface-local
+        // coordinates and the game snaps the camera back.
         let window = self
             .space
             .elements()
@@ -306,7 +320,7 @@ impl PointerConstraintsHandler for DriftWm {
         if let Some(window) = window
             && let Some(loc) = self.space.element_location(&window)
         {
-            self.cursor.pointer_position_hint = Some(loc.to_f64() + location);
+            pointer.set_location(loc.to_f64() + location);
         }
     }
 }

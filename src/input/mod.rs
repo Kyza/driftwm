@@ -224,43 +224,21 @@ impl DriftWm {
         keyboard.set_focus(self, focus_surface, serial);
     }
 
-    /// Deactivate constraint on old focus if focus changed, warp to hint if set,
-    /// then try to activate constraint on new focus.
-    fn update_pointer_constraint(
-        &mut self,
-        old_focus: Option<FocusTarget>,
-        serial: smithay::utils::Serial,
-        time: u32,
-    ) {
+    /// Deactivate the constraint on the previous focus if focus changed,
+    /// then try to activate one on the new focus.
+    fn update_pointer_constraint(&mut self, old_focus: Option<FocusTarget>) {
         let pointer = self.seat.get_pointer().unwrap();
         let new_focus = pointer.current_focus();
         let focus_changed = old_focus.as_ref().map(|f| &f.0) != new_focus.as_ref().map(|f| &f.0);
 
-        if focus_changed {
-            if let Some(old) = &old_focus {
-                with_pointer_constraint(&old.0, &pointer, |c| {
-                    if let Some(c) = c
-                        && c.is_active()
-                    {
-                        c.deactivate();
-                    }
-                });
-            }
-
-            // Warp pointer to hint position if one was set during a lock
-            if let Some(hint) = self.cursor.pointer_position_hint.take() {
-                let focus_with_origin = new_focus.as_ref().and_then(|f| {
-                    let origin = window_origin_for_surface(self, &f.0)?;
-                    Some((f.clone(), origin))
-                });
-                self.pointer_over_layer = false;
-                pointer.motion(
-                    self,
-                    focus_with_origin,
-                    &MotionEvent { location: hint, serial, time },
-                );
-                pointer.frame(self);
-            }
+        if focus_changed && let Some(old) = &old_focus {
+            with_pointer_constraint(&old.0, &pointer, |c| {
+                if let Some(c) = c
+                    && c.is_active()
+                {
+                    c.deactivate();
+                }
+            });
         }
 
         self.maybe_activate_pointer_constraint();
@@ -322,7 +300,7 @@ impl DriftWm {
         let pointer = self.seat.get_pointer().unwrap();
         let old_focus = pointer.current_focus();
         self.dispatch_pointer_focus(&pointer, screen_pos, canvas_pos, serial, time);
-        self.update_pointer_constraint(old_focus, serial, time);
+        self.update_pointer_constraint(old_focus);
         self.maybe_hover_focus(canvas_pos);
     }
 
@@ -503,7 +481,7 @@ impl DriftWm {
 
         let old_focus = pointer.current_focus();
         self.dispatch_pointer_focus(&pointer, screen_pos, canvas_pos, serial, time);
-        self.update_pointer_constraint(old_focus, serial, time);
+        self.update_pointer_constraint(old_focus);
         self.maybe_hover_focus(canvas_pos);
     }
 

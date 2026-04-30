@@ -19,8 +19,6 @@ pub struct CursorState {
     pub cursor_status: CursorImageStatus,
     /// True while a compositor grab (pan/resize) owns the cursor icon.
     pub grab_cursor: bool,
-    /// Cursor warp target from a locked pointer's position hint (canvas coords).
-    pub pointer_position_hint: Option<Point<f64, Logical>>,
     /// True while the pointer is over an SSD decoration area.
     pub decoration_cursor: bool,
     pub cursor_buffers: HashMap<String, CursorFrames>,
@@ -35,7 +33,6 @@ impl CursorState {
         Self {
             cursor_status: CursorImageStatus::default_named(),
             grab_cursor: false,
-            pointer_position_hint: None,
             decoration_cursor: false,
             cursor_buffers: HashMap::new(),
             exec_cursor_show_at: None,

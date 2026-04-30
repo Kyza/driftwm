@@ -56,11 +56,24 @@ impl DriftWm {
     }
 
     /// Send a synthetic pointer motion to keep the cursor at the same screen
-    /// position after a camera or zoom change.
+    /// position after a camera or zoom change. When a constraint is active,
+    /// silently update the internal location instead — `wl_pointer.motion`
+    /// to a locked surface reads as a phantom absolute move (snap-back).
     pub(crate) fn warp_pointer(&mut self, new_pos: Point<f64, Logical>) {
+        let pointer = self.seat.get_pointer().unwrap();
+
+        let constraint_active = pointer.current_focus().is_some_and(|focus| {
+            smithay::wayland::pointer_constraints::with_pointer_constraint(
+                &focus.0, &pointer, |c| c.is_some_and(|c| c.is_active()),
+            )
+        });
+        if constraint_active {
+            pointer.set_location(new_pos);
+            return;
+        }
+
         let under = self.focus_under(new_pos);
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-        let pointer = self.seat.get_pointer().unwrap();
         pointer.motion(
             self,
             under,
