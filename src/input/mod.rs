@@ -127,65 +127,48 @@ impl DriftWm {
     }
 
 
-    /// Hit-test the pointer against all surface layers in z-order and update focus.
-    /// Shared by both absolute and relative pointer motion handlers.
-    fn dispatch_pointer_focus(
+    /// Hit-test the pointer against all surface layers in z-order. Sets
+    /// `self.pointer_over_layer` as a side effect. The caller is responsible
+    /// for issuing `pointer.motion()` / `pointer.relative_motion()` /
+    /// `pointer.frame()` and calling `update_decoration_cursor()` so that
+    /// absolute and relative motion events agree on the same target surface.
+    fn pointer_focus_under(
         &mut self,
-        pointer: &smithay::input::pointer::PointerHandle<DriftWm>,
         screen_pos: Point<f64, smithay::utils::Logical>,
         canvas_pos: Point<f64, smithay::utils::Logical>,
-        serial: smithay::utils::Serial,
-        time: u32,
-    ) {
-        // Check Overlay and Top layers at screen coords
+    ) -> Option<(FocusTarget, Point<f64, smithay::utils::Logical>)> {
+        // Overlay and Top layers
         if let Some(hit) = self.layer_surface_under(screen_pos, canvas_pos, &[WlrLayer::Overlay, WlrLayer::Top]) {
             self.pointer_over_layer = true;
-            pointer.motion(self, Some(hit), &MotionEvent { location: canvas_pos, serial, time });
-            pointer.frame(self);
-            return;
+            return Some(hit);
         }
 
         // Non-widget canvas windows (visually above canvas layers)
-        let under = self.surface_under(canvas_pos, Some(false));
-        if under.is_some() {
+        if let Some(hit) = self.surface_under(canvas_pos, Some(false)) {
             self.pointer_over_layer = false;
-            pointer.motion(self, under, &MotionEvent { location: canvas_pos, serial, time });
-            pointer.frame(self);
-            self.update_decoration_cursor(canvas_pos);
-            return;
+            return Some(hit);
         }
 
         // Canvas-positioned layer surfaces
         if let Some(hit) = self.canvas_layer_under(canvas_pos) {
             self.pointer_over_layer = false;
-            pointer.motion(self, Some(hit), &MotionEvent { location: canvas_pos, serial, time });
-            pointer.frame(self);
-            return;
+            return Some(hit);
         }
 
         // Widget canvas windows (visually below canvas layers)
-        let under = self.surface_under(canvas_pos, Some(true));
-        if under.is_some() {
+        if let Some(hit) = self.surface_under(canvas_pos, Some(true)) {
             self.pointer_over_layer = false;
-            pointer.motion(self, under, &MotionEvent { location: canvas_pos, serial, time });
-            pointer.frame(self);
-            self.update_decoration_cursor(canvas_pos);
-            return;
+            return Some(hit);
         }
 
-        // Check Bottom and Background layers at screen coords
+        // Bottom and Background layers
         if let Some(hit) = self.layer_surface_under(screen_pos, canvas_pos, &[WlrLayer::Bottom, WlrLayer::Background]) {
             self.pointer_over_layer = true;
-            pointer.motion(self, Some(hit), &MotionEvent { location: canvas_pos, serial, time });
-            pointer.frame(self);
-            return;
+            return Some(hit);
         }
 
-        // No hit — empty canvas
         self.pointer_over_layer = false;
-        pointer.motion(self, None, &MotionEvent { location: canvas_pos, serial, time });
-        pointer.frame(self);
-        self.update_decoration_cursor(canvas_pos);
+        None
     }
 
     /// Sloppy focus: when enabled, focus the non-widget window under the pointer
@@ -299,7 +282,10 @@ impl DriftWm {
         let time = Event::time_msec(&event);
         let pointer = self.seat.get_pointer().unwrap();
         let old_focus = pointer.current_focus();
-        self.dispatch_pointer_focus(&pointer, screen_pos, canvas_pos, serial, time);
+        let under = self.pointer_focus_under(screen_pos, canvas_pos);
+        pointer.motion(self, under, &MotionEvent { location: canvas_pos, serial, time });
+        pointer.frame(self);
+        self.update_decoration_cursor(canvas_pos);
         self.update_pointer_constraint(old_focus);
         self.maybe_hover_focus(canvas_pos);
     }
@@ -475,19 +461,28 @@ impl DriftWm {
         // Update focused_output
         self.focused_output = Some(target_output);
 
-        // Emit relative motion event for clients that use zwp_relative_pointer
+        let old_focus = pointer.current_focus();
+        // Compute the focus once and use it for both motion and relative_motion,
+        // so zwp_relative_pointer clients agree with wl_pointer about the target
+        // surface — otherwise relative motion lands on a window underneath a
+        // layer surface while wl_pointer.motion lands on the layer.
+        let under = self.pointer_focus_under(screen_pos, canvas_pos);
+        pointer.motion(
+            self,
+            under.clone(),
+            &MotionEvent { location: canvas_pos, serial, time },
+        );
         pointer.relative_motion(
             self,
-            self.surface_under(canvas_pos, None),
+            under,
             &RelativeMotionEvent {
                 delta,
                 delta_unaccel: event.delta_unaccel(),
                 utime: Event::time(&event),
             },
         );
-
-        let old_focus = pointer.current_focus();
-        self.dispatch_pointer_focus(&pointer, screen_pos, canvas_pos, serial, time);
+        pointer.frame(self);
+        self.update_decoration_cursor(canvas_pos);
         self.update_pointer_constraint(old_focus);
         self.maybe_hover_focus(canvas_pos);
     }

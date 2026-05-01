@@ -80,6 +80,14 @@ impl XdgShellHandler for DriftWm {
             return;
         };
 
+        // Reject grabs whose root isn't the focused surface — xdg-shell requires
+        // popup grabs to follow user input on the focused window. A misbehaving
+        // (or hostile) client otherwise steals keyboard focus from a hidden window.
+        if !self.popup_grab_allowed(&root) {
+            let _ = smithay::desktop::PopupManager::dismiss_popup(&root, &kind);
+            return;
+        }
+
         let root_focus = FocusTarget(root);
         let Ok(mut grab) =
             self.popups
@@ -369,6 +377,36 @@ fn check_grab(
 }
 
 impl DriftWm {
+    /// Decide whether a popup grab on `root` should be honored.
+    ///
+    /// Rules:
+    ///   - When the session is locked, only the active lock surface(s) may grab.
+    ///   - When `root` is a regular xdg-toplevel, it must currently hold keyboard
+    ///     focus. Otherwise a hidden / unfocused client could steal input.
+    ///   - Layer-shell and canvas-layer parents always pass — they grab as part
+    ///     of normal panel/menu behavior and aren't governed by window focus.
+    pub(crate) fn popup_grab_allowed(
+        &self,
+        root: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> bool {
+        if !matches!(self.session_lock, crate::state::SessionLock::Unlocked) {
+            return self.lock_surfaces.values().any(|ls| ls.wl_surface() == root);
+        }
+
+        let is_window = self
+            .space
+            .elements()
+            .any(|w| w.wl_surface().as_deref() == Some(root));
+        if !is_window {
+            return true;
+        }
+
+        let keyboard = self.seat.get_keyboard().unwrap();
+        keyboard
+            .current_focus()
+            .is_some_and(|f| &f.0 == root)
+    }
+
     /// Apply xdg positioner constraint adjustments so the popup stays within
     /// the output bounds. Works for both xdg-toplevel and layer-shell parents.
     pub(crate) fn unconstrain_popup(&self, popup: &PopupKind) {
