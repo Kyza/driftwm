@@ -1388,6 +1388,140 @@ fn frame_callback_filter<'a>(
     }
 }
 
+/// Update each visible surface's primary-scanout-output to `output`. Smithay
+/// uses this to decide where to deliver presentation feedback. Must be called
+/// after `compositor.render_frame()` so we have render-element states.
+pub fn update_primary_scanout_output(
+    state: &crate::state::DriftWm,
+    output: &Output,
+    states: &smithay::backend::renderer::element::RenderElementStates,
+) {
+    use smithay::desktop::utils::update_surface_primary_scanout_output;
+    use smithay::wayland::compositor::with_surface_tree_downward;
+    use smithay::wayland::compositor::TraversalAction;
+
+    for window in state.space.elements() {
+        window.with_surfaces(|surface, surface_data| {
+            update_surface_primary_scanout_output(
+                surface,
+                output,
+                surface_data,
+                None,
+                states,
+                smithay::backend::renderer::element::default_primary_scanout_output_compare,
+            );
+        });
+    }
+
+    let layer_map = layer_map_for_output(output);
+    for layer_surface in layer_map.layers() {
+        layer_surface.with_surfaces(|surface, surface_data| {
+            update_surface_primary_scanout_output(
+                surface,
+                output,
+                surface_data,
+                None,
+                states,
+                smithay::backend::renderer::element::default_primary_scanout_output_compare,
+            );
+        });
+    }
+    drop(layer_map);
+
+    for cl in &state.canvas_layers {
+        with_surface_tree_downward(
+            cl.surface.wl_surface(),
+            (),
+            |_, _, _| TraversalAction::DoChildren(()),
+            |surface, surface_data, _| {
+                update_surface_primary_scanout_output(
+                    surface,
+                    output,
+                    surface_data,
+                    None,
+                    states,
+                    smithay::backend::renderer::element::default_primary_scanout_output_compare,
+                );
+            },
+            |_, _, _| true,
+        );
+    }
+
+    if let Some(lock_surface) = state.lock_surfaces.get(output) {
+        with_surface_tree_downward(
+            lock_surface.wl_surface(),
+            (),
+            |_, _, _| TraversalAction::DoChildren(()),
+            |surface, surface_data, _| {
+                update_surface_primary_scanout_output(
+                    surface,
+                    output,
+                    surface_data,
+                    None,
+                    states,
+                    smithay::backend::renderer::element::default_primary_scanout_output_compare,
+                );
+            },
+            |_, _, _| true,
+        );
+    }
+
+}
+
+/// Collect presentation-feedback callbacks from all surfaces visible on `output`.
+/// Hand the result to `compositor.queue_frame()` and let `frame_submitted()`
+/// return it to be consumed by `presented()` on VBlank.
+pub fn take_presentation_feedback(
+    state: &crate::state::DriftWm,
+    output: &Output,
+    states: &smithay::backend::renderer::element::RenderElementStates,
+) -> smithay::desktop::utils::OutputPresentationFeedback {
+    use smithay::desktop::utils::{
+        OutputPresentationFeedback, surface_presentation_feedback_flags_from_states,
+        surface_primary_scanout_output, take_presentation_feedback_surface_tree,
+    };
+
+    let mut feedback = OutputPresentationFeedback::new(output);
+
+    for window in state.space.elements() {
+        window.take_presentation_feedback(
+            &mut feedback,
+            surface_primary_scanout_output,
+            |surface, _| surface_presentation_feedback_flags_from_states(surface, None, states),
+        );
+    }
+
+    let layer_map = layer_map_for_output(output);
+    for layer_surface in layer_map.layers() {
+        layer_surface.take_presentation_feedback(
+            &mut feedback,
+            surface_primary_scanout_output,
+            |surface, _| surface_presentation_feedback_flags_from_states(surface, None, states),
+        );
+    }
+    drop(layer_map);
+
+    for cl in &state.canvas_layers {
+        take_presentation_feedback_surface_tree(
+            cl.surface.wl_surface(),
+            &mut feedback,
+            surface_primary_scanout_output,
+            |surface, _| surface_presentation_feedback_flags_from_states(surface, None, states),
+        );
+    }
+
+    if let Some(lock_surface) = state.lock_surfaces.get(output) {
+        take_presentation_feedback_surface_tree(
+            lock_surface.wl_surface(),
+            &mut feedback,
+            surface_primary_scanout_output,
+            |surface, _| surface_presentation_feedback_flags_from_states(surface, None, states),
+        );
+    }
+
+    feedback
+}
+
 /// Post-render: frame callbacks, space cleanup.
 pub fn post_render(state: &mut crate::state::DriftWm, output: &Output) {
     let time = state.start_time.elapsed();

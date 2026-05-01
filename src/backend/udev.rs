@@ -51,7 +51,7 @@ const SUPPORTED_COLOR_FORMATS: &[Fourcc] = &[
 type GbmDrmCompositor = DrmCompositor<
     GbmAllocator<DrmDeviceFd>,
     GbmFramebufferExporter<DrmDeviceFd>,
-    (),
+    smithay::desktop::utils::OutputPresentationFeedback,
     DrmDeviceFd,
 >;
 
@@ -423,21 +423,23 @@ pub fn init_udev(
 
     // 9. Register DRM event source (VBlank handler)
     let device_for_drm = Rc::clone(&device);
-    event_loop.handle().insert_source(drm_notifier, move |event, _meta, data: &mut DriftWm| {
+    event_loop.handle().insert_source(drm_notifier, move |event, meta, data: &mut DriftWm| {
         let mut dev = device_for_drm.borrow_mut();
         match event {
             DrmEvent::VBlank(crtc) => {
                 let Some(surface) = dev.surfaces.get_mut(&crtc) else {
                     return;
                 };
-                if let Err(e) = surface.compositor.frame_submitted() {
-                    tracing::warn!("frame_submitted error: {e:?}");
+                match surface.compositor.frame_submitted() {
+                    Ok(Some(mut feedback)) => {
+                        deliver_presentation(&mut feedback, &surface.output, meta.as_ref());
+                    }
+                    Ok(None) => {}
+                    Err(e) => tracing::warn!("frame_submitted error: {e:?}"),
                 }
                 data.frames_pending.remove(&crtc);
-                {
-                    let mut os = crate::state::output_state(&surface.output);
-                    os.frame_callback_sequence = os.frame_callback_sequence.wrapping_add(1);
-                }
+                // The sequence was already bumped at queue_frame time so the
+                // just-presented commit's frame callback fires this cycle.
                 // Real VBlank beat any estimated-VBlank timer we might have armed.
                 if let Some(token) = data.estimated_vblank_timers.remove(&crtc) {
                     data.loop_handle.remove(token);
@@ -1094,21 +1096,33 @@ fn render_frame(
     }
 
     match render_result {
-        Ok(_render_result) => match compositor.queue_frame(()) {
-            Ok(()) => {
-                data.frames_pending.insert(crtc);
-            }
-            Err(FrameError::EmptyFrame) => {
-                // No page flip → no VBlank. Arm a wake if animations still need ticking.
-                if data.has_active_animations() || data.render.background_is_animated {
+        Ok(render_result) => {
+            crate::render::update_primary_scanout_output(data, output, &render_result.states);
+            let feedback =
+                crate::render::take_presentation_feedback(data, output, &render_result.states);
+            match compositor.queue_frame(feedback) {
+                Ok(()) => {
+                    data.frames_pending.insert(crtc);
+                    // Bump the frame-callback sequence here, before post_render
+                    // emits frame callbacks. If we waited for the VBlank handler
+                    // the just-rendered commit's filter would still see the old
+                    // sequence and suppress its callback — clients halve their
+                    // FPS while waiting one vblank longer than necessary.
+                    let mut os = crate::state::output_state(output);
+                    os.frame_callback_sequence = os.frame_callback_sequence.wrapping_add(1);
+                }
+                Err(FrameError::EmptyFrame) => {
+                    // No page flip → no VBlank. Arm a wake if animations still need ticking.
+                    if data.has_active_animations() || data.render.background_is_animated {
+                        queue_estimated_vblank_timer(data, output, crtc);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to queue frame: {e:?}");
                     queue_estimated_vblank_timer(data, output, crtc);
                 }
             }
-            Err(e) => {
-                tracing::warn!("Failed to queue frame: {e:?}");
-                queue_estimated_vblank_timer(data, output, crtc);
-            }
-        },
+        }
         Err(e) => {
             tracing::warn!("Render frame error: {e:?}");
             queue_estimated_vblank_timer(data, output, crtc);
@@ -1136,6 +1150,50 @@ fn render_frame(
     // Post-render
     crate::render::post_render(data, output);
     data.display_handle.flush_clients().ok();
+}
+
+/// Forward a page-flip's timing to all clients waiting on `wp_presentation`.
+/// `meta` carries the kernel timestamp + sequence; if it's missing (rare on
+/// some drivers) we discard rather than fabricate, per protocol guidance.
+fn deliver_presentation(
+    feedback: &mut smithay::desktop::utils::OutputPresentationFeedback,
+    output: &Output,
+    meta: Option<&smithay::backend::drm::DrmEventMetadata>,
+) {
+    use smithay::backend::drm::DrmEventTime as DrmTime;
+    use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
+    use smithay::wayland::presentation::Refresh;
+
+    let Some(meta) = meta else {
+        feedback.discarded();
+        return;
+    };
+
+    let refresh_picos = output
+        .current_mode()
+        .map(|m| (1_000_000_000_000u64 / (m.refresh.max(1) as u64)) as u32)
+        .unwrap_or(0);
+    let refresh = Refresh::Fixed(Duration::from_nanos(refresh_picos as u64));
+
+    let flags = wp_presentation_feedback::Kind::Vsync
+        | wp_presentation_feedback::Kind::HwClock
+        | wp_presentation_feedback::Kind::HwCompletion;
+
+    match meta.time {
+        DrmTime::Monotonic(time) => {
+            feedback.presented::<_, smithay::utils::Monotonic>(
+                time,
+                refresh,
+                meta.sequence as u64,
+                flags,
+            );
+        }
+        DrmTime::Realtime(_) => {
+            // We advertised CLOCK_MONOTONIC; a realtime stamp from the kernel
+            // can't be reported safely against that clock id.
+            feedback.discarded();
+        }
+    }
 }
 
 /// Wake the VBlank-driven loop at ~one refresh period when queue_frame returned

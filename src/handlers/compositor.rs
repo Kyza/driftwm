@@ -69,47 +69,45 @@ impl CompositorHandler for DriftWm {
                 }
             });
         });
-    }
 
-    fn commit(&mut self, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
-        self.mark_all_dirty();
-
-        // DMA-BUF readiness blocker: if a pending buffer is a dmabuf, add a
-        // calloop source that waits for the GPU fence and then unblocks the
-        // compositor transaction. Without this, GPU-rendered frames may commit
-        // before the buffer is ready.
-        let maybe_dmabuf = with_states(surface, |surface_data| {
-            surface_data
-                .cached_state
-                .get::<SurfaceAttributes>()
-                .pending()
-                .buffer
-                .as_ref()
-                .and_then(|assignment| match assignment {
-                    BufferAssignment::NewBuffer(buffer) => get_dmabuf(buffer).cloned().ok(),
-                    _ => None,
-                })
-        });
-        if let Some(dmabuf) = maybe_dmabuf
-            && let Ok((blocker, source)) = dmabuf.generate_blocker(Interest::READ)
-            && let Some(client) = surface.client()
-        {
-            let ok = self
+        // DMA-BUF readiness blocker. Inspect the *pending* buffer in a pre-commit
+        // hook (per smithay's docs) so the blocker delays the commit it belongs
+        // to. Doing this in `commit()` would be too late — pending state has
+        // already been merged into current.
+        add_pre_commit_hook::<DriftWm, _>(surface, |state, _dh, surface| {
+            let maybe_dmabuf = with_states(surface, |surface_data| {
+                surface_data
+                    .cached_state
+                    .get::<SurfaceAttributes>()
+                    .pending()
+                    .buffer
+                    .as_ref()
+                    .and_then(|assignment| match assignment {
+                        BufferAssignment::NewBuffer(buffer) => get_dmabuf(buffer).cloned().ok(),
+                        _ => None,
+                    })
+            });
+            let Some(dmabuf) = maybe_dmabuf else { return };
+            let Ok((blocker, source)) = dmabuf.generate_blocker(Interest::READ) else { return };
+            let Some(client) = surface.client() else { return };
+            let inserted = state
                 .loop_handle
                 .insert_source(source, move |_, _, data: &mut DriftWm| {
                     if let Some(client_state) = client.get_data::<ClientState>() {
                         let dh = data.display_handle.clone();
-                        client_state
-                            .compositor_state
-                            .blocker_cleared(data, &dh);
+                        client_state.compositor_state.blocker_cleared(data, &dh);
                     }
                     Ok(())
                 })
                 .is_ok();
-            if ok {
+            if inserted {
                 add_blocker(surface, blocker);
             }
-        }
+        });
+    }
+
+    fn commit(&mut self, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
+        self.mark_all_dirty();
 
         // Trim corners from CSD toplevels' opaque regions so the background renders
         // behind rounded corners. Some CSD apps (e.g. LibreOffice/GTK3) declare the
