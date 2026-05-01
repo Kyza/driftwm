@@ -217,6 +217,7 @@ impl DriftWm {
             focus_history: Vec::new(),
             cycle_state: None,
             held_action: None,
+            suppressed_keys: HashSet::new(),
             gesture_state: None,
             pending_middle_click: None,
             momentum_timer: None,

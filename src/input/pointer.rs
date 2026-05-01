@@ -46,6 +46,11 @@ impl DriftWm {
     /// 2. Normal click on window → focus + raise + forward to client
     /// 3. Left-click on empty canvas → pan canvas
     pub(super) fn on_pointer_button<I: InputBackend>(&mut self, event: I::PointerButtonEvent) {
+        // Outputs can transiently disappear (cable unplug, GPU resume race);
+        // bail out so downstream active_output() / element_location() can't panic.
+        if self.space.outputs().next().is_none() {
+            return;
+        }
         let serial = SERIAL_COUNTER.next_serial();
         let button = event.button_code();
         let button_state = event.state();
@@ -192,8 +197,14 @@ impl DriftWm {
                                 // cluster drag is a separate explicit action
                                 // (`MoveSnappedWindows`, default Alt+Shift+Left).
                                 self.raise_and_focus(&window, serial);
-                                let initial_window_location =
-                                    self.space.element_location(&window).unwrap();
+                                let Some(initial_window_location) =
+                                    self.space.element_location(&window)
+                                else {
+                                    return;
+                                };
+                                let Some(output) = self.active_output() else {
+                                    return;
+                                };
                                 let start_data = GrabStartData {
                                     focus: None,
                                     button,
@@ -203,7 +214,7 @@ impl DriftWm {
                                     start_data,
                                     window,
                                     initial_window_location,
-                                    self.active_output().unwrap(),
+                                    output,
                                     Vec::new(),
                                     HashSet::new(),
                                 );
@@ -252,8 +263,14 @@ impl DriftWm {
                         {
                             self.raise_and_focus(&window, serial);
 
-                            let initial_window_location =
-                                self.space.element_location(&window).unwrap();
+                            let Some(initial_window_location) =
+                                self.space.element_location(&window)
+                            else {
+                                return;
+                            };
+                            let Some(output) = self.active_output() else {
+                                return;
+                            };
                             let start_data = GrabStartData {
                                 focus: None,
                                 button,
@@ -270,7 +287,7 @@ impl DriftWm {
                                 start_data,
                                 window,
                                 initial_window_location,
-                                self.active_output().unwrap(),
+                                output,
                                 cluster_members,
                                 cluster_member_surfaces,
                             );
@@ -309,11 +326,16 @@ impl DriftWm {
                     MouseAction::PanViewport => {
                         self.set_panning(true);
                         let from_empty = context == BindingContext::OnCanvas;
-                        let grab = self.make_pan_grab(pos, button, from_empty);
+                        let Some(grab) = self.make_pan_grab(pos, button, from_empty) else {
+                            return;
+                        };
                         pointer.set_grab(self, grab, serial, Focus::Clear);
                         return;
                     }
                     MouseAction::CenterNearest => {
+                        let Some(output) = self.active_output() else {
+                            return;
+                        };
                         let screen_pos =
                             canvas_to_screen(CanvasPos(pos), self.camera(), self.zoom()).0;
                         let start_data = GrabStartData {
@@ -321,11 +343,7 @@ impl DriftWm {
                             button,
                             location: pos,
                         };
-                        let grab = NavigateGrab::new(
-                            start_data,
-                            screen_pos,
-                            self.active_output().unwrap(),
-                        );
+                        let grab = NavigateGrab::new(start_data, screen_pos, output);
                         pointer.set_grab(self, grab, serial, Focus::Clear);
                         return;
                     }
@@ -419,7 +437,9 @@ impl DriftWm {
         explicit_edge: Option<xdg_toplevel::ResizeEdge>,
         want_cluster: bool,
     ) {
-        let initial_window_location = self.space.element_location(window).unwrap();
+        let Some(initial_window_location) = self.space.element_location(window) else {
+            return;
+        };
         let initial_window_size = window.geometry().size;
 
         let edges = explicit_edge.unwrap_or_else(|| {
@@ -459,7 +479,9 @@ impl DriftWm {
             button,
             location: pos,
         };
-        let output = self.active_output().unwrap();
+        let Some(output) = self.active_output() else {
+            return;
+        };
         // Only snapshot the cluster when the caller opted in. For
         // single-window resize (`want_cluster = false`) we hand the grab an
         // empty snapshot so `cluster_resize.members.is_empty()` short-circuits
@@ -488,6 +510,9 @@ impl DriftWm {
     }
 
     pub(super) fn on_pointer_axis<I: InputBackend>(&mut self, event: I::PointerAxisEvent) {
+        if self.space.outputs().next().is_none() {
+            return;
+        }
         // When pointer is over a layer surface, forward scroll directly (no pan/zoom)
         if self.pointer_over_layer {
             let pointer = self.seat.get_pointer().unwrap();
@@ -626,9 +651,9 @@ impl DriftWm {
         canvas_pos: Point<f64, smithay::utils::Logical>,
         button: u32,
         from_empty_canvas: bool,
-    ) -> PanGrab {
+    ) -> Option<PanGrab> {
         let screen_pos = canvas_to_screen(CanvasPos(canvas_pos), self.camera(), self.zoom()).0;
-        PanGrab {
+        Some(PanGrab {
             start_data: GrabStartData {
                 focus: None,
                 button,
@@ -638,8 +663,8 @@ impl DriftWm {
             start_screen_pos: screen_pos,
             from_empty_canvas,
             dragged: false,
-            output: self.active_output().unwrap(),
-        }
+            output: self.active_output()?,
+        })
     }
 }
 

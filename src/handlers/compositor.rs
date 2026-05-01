@@ -41,6 +41,20 @@ impl CompositorHandler for DriftWm {
             .compositor_state
     }
 
+    fn destroyed(&mut self, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
+        // Safety net for per-surface state. toplevel_destroyed clears most of
+        // these for normal xdg shutdown, but a client crash can destroy the
+        // wl_surface without invoking the role-specific path.
+        let id = surface.id();
+        self.decorations.remove(&id);
+        self.pending_ssd.remove(&id);
+        self.pending_recenter.remove(&id);
+        self.render.blur_cache.remove(&id);
+        self.render.shadow_cache.remove(&id);
+        // lock_surfaces is keyed by output, not surface — sweep values.
+        self.lock_surfaces.retain(|_, ls| ls.wl_surface() != surface);
+    }
+
     fn new_surface(&mut self, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
         // Register an early pre-commit hook. Since this runs at surface creation
         // (before get_layer_surface registers smithay's validation hook), it fires

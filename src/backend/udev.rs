@@ -464,6 +464,10 @@ pub fn init_udev(
                 for (_, token) in data.estimated_vblank_timers.drain() {
                     data.loop_handle.remove(token);
                 }
+                // Releases for held keys / cycle modifiers may not be delivered
+                // when the session is paused.
+                data.suppressed_keys.clear();
+                data.cycle_state = None;
             }
             SessionEvent::ActivateSession => {
                 tracing::info!("Session resumed (VT switch back)");

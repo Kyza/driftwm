@@ -32,6 +32,9 @@ impl DriftWm {
                         let raw = handle.modified_sym().raw();
                         if (0x1008FE01..=0x1008FE0C).contains(&raw) {
                             let vt = (raw - 0x1008FE01 + 1) as i32;
+                            // VT switch may not deliver releases; reset key/cycle state.
+                            state.suppressed_keys.clear();
+                            state.cycle_state = None;
                             if let Some(ref mut session) = state.session
                                 && let Err(e) = session.change_vt(vt)
                             {
@@ -70,53 +73,66 @@ impl DriftWm {
                     return FilterResult::Forward;
                 }
 
-                if key_state == KeyState::Pressed {
-                    let sym = handle.modified_sym();
-
-                    // VT switching: Ctrl+Alt+F1..F12 produces XF86Switch_VT_1..12
-                    let raw = sym.raw();
-                    if (0x1008FE01..=0x1008FE0C).contains(&raw) {
-                        let vt = (raw - 0x1008FE01 + 1) as i32;
-                        if let Some(ref mut session) = state.session
-                            && let Err(e) = session.change_vt(vt)
-                        {
-                            tracing::warn!("Failed to switch to VT{vt}: {e}");
-                        }
+                if key_state == KeyState::Released {
+                    // Suppress the release of any key whose press we intercepted —
+                    // otherwise the focused client sees a "release without press".
+                    if state.suppressed_keys.remove(&keycode_u32) {
                         return FilterResult::Intercept(None);
                     }
-
-                    // pass_keys: forward compositor keybindings to the focused window.
-                    // PassKeys::All  — forward everything (game-friendly).
-                    // PassKeys::Only — forward only the listed combos; rest stay active.
-                    // VT-switching above is always handled regardless.
-                    // Uses live config so a config-reload takes effect immediately.
-                    let focused_pass_keys = state.focused_window().and_then(|w| {
-                        let app_id = w.app_id_or_class().unwrap_or_default();
-                        let title = w.window_title().unwrap_or_default();
-                        state
-                            .config
-                            .resolve_window_rules(&app_id, &title)
-                            .map(|r| r.pass_keys)
-                    });
-                    if focused_pass_keys
-                        .as_ref()
-                        .is_some_and(|pk| pk.allows_raw(modifiers, sym))
-                    {
-                        return FilterResult::Forward;
-                    }
-
-                    if let Some(action) = state.config.lookup(modifiers, sym) {
-                        return FilterResult::Intercept(Some(action.clone()));
-                    }
-
-                    if state.config.layout_independent
-                        && let Some(raw_sym) = handle.raw_latin_sym_or_raw_current_sym()
-                        && raw_sym != sym
-                        && let Some(action) = state.config.lookup(modifiers, raw_sym)
-                    {
-                        return FilterResult::Intercept(Some(action.clone()));
-                    }
+                    return FilterResult::Forward;
                 }
+
+                let sym = handle.modified_sym();
+
+                // VT switching: Ctrl+Alt+F1..F12 produces XF86Switch_VT_1..12
+                let raw = sym.raw();
+                if (0x1008FE01..=0x1008FE0C).contains(&raw) {
+                    let vt = (raw - 0x1008FE01 + 1) as i32;
+                    // VT switch may not deliver releases; reset key/cycle state.
+                    state.suppressed_keys.clear();
+                    state.cycle_state = None;
+                    if let Some(ref mut session) = state.session
+                        && let Err(e) = session.change_vt(vt)
+                    {
+                        tracing::warn!("Failed to switch to VT{vt}: {e}");
+                    }
+                    return FilterResult::Intercept(None);
+                }
+
+                // pass_keys: forward compositor keybindings to the focused window.
+                // PassKeys::All  — forward everything (game-friendly).
+                // PassKeys::Only — forward only the listed combos; rest stay active.
+                // VT-switching above is always handled regardless.
+                // Uses live config so a config-reload takes effect immediately.
+                let focused_pass_keys = state.focused_window().and_then(|w| {
+                    let app_id = w.app_id_or_class().unwrap_or_default();
+                    let title = w.window_title().unwrap_or_default();
+                    state
+                        .config
+                        .resolve_window_rules(&app_id, &title)
+                        .map(|r| r.pass_keys)
+                });
+                if focused_pass_keys
+                    .as_ref()
+                    .is_some_and(|pk| pk.allows_raw(modifiers, sym))
+                {
+                    return FilterResult::Forward;
+                }
+
+                if let Some(action) = state.config.lookup(modifiers, sym) {
+                    state.suppressed_keys.insert(keycode_u32);
+                    return FilterResult::Intercept(Some(action.clone()));
+                }
+
+                if state.config.layout_independent
+                    && let Some(raw_sym) = handle.raw_latin_sym_or_raw_current_sym()
+                    && raw_sym != sym
+                    && let Some(action) = state.config.lookup(modifiers, raw_sym)
+                {
+                    state.suppressed_keys.insert(keycode_u32);
+                    return FilterResult::Intercept(Some(action.clone()));
+                }
+
                 FilterResult::Forward
             },
         );

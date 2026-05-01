@@ -376,6 +376,12 @@ pub struct DriftWm {
     // -- global: key repeat --
     pub held_action: Option<(u32, driftwm::config::Action, Instant)>,
 
+    // Keycodes whose press was intercepted by a binding. Their releases must
+    // also be intercepted, otherwise the focused client receives a "release
+    // without press" — games / Discord / state-tracking apps break, and
+    // launchers leak the trigger key into the previously focused window.
+    pub suppressed_keys: HashSet<u32>,
+
     // -- per-output: fullscreen (keyed by output, since FullscreenState has Window) --
     pub fullscreen: HashMap<Output, FullscreenState>,
 
