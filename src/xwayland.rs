@@ -17,7 +17,7 @@ use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 
 use smithay::reexports::rustix;
-use smithay::reexports::rustix::fs::OFlags;
+use smithay::reexports::rustix::io::Errno;
 
 use crate::state::DriftWm;
 
@@ -144,20 +144,26 @@ fn probe_satellite(path: &str) -> bool {
     }
 }
 
-/// Find a display number whose `/tmp/.X{N}-lock` file is absent. Satellite's
-/// internal Xwayland will create the lock and bind `/tmp/.X11-unix/X{N}`.
-/// Race-prone (another process could claim the same number between our check
-/// and Xwayland's bind), but in practice only one compositor starts at a
-/// time on a single user session.
+/// Find a display number whose lock file *and* unix socket are both absent.
+/// Satellite's internal Xwayland will create the lock and bind
+/// `/tmp/.X11-unix/X{N}`, so either artifact already existing means another
+/// X server (e.g. an SDDM-managed Xorg greeter on the same seat) holds the
+/// number. Stat errors other than ENOENT are treated as "occupied" — a
+/// root-owned lock file with no read permission would otherwise look free.
 fn find_free_display() -> Option<u32> {
-    for n in 0..MAX_DISPLAY {
-        let lock_path = format!("/tmp/.X{n}-lock");
-        let flags = OFlags::RDONLY | OFlags::CLOEXEC;
-        if rustix::fs::open(&lock_path, flags, 0.into()).is_err() {
-            return Some(n);
-        }
+    (0..MAX_DISPLAY).find(|&n| !display_in_use(n))
+}
+
+fn display_in_use(n: u32) -> bool {
+    path_present(&format!("/tmp/.X{n}-lock")) || path_present(&format!("/tmp/.X11-unix/X{n}"))
+}
+
+fn path_present(path: &str) -> bool {
+    match rustix::fs::lstat(path) {
+        Ok(_) => true,
+        Err(Errno::NOENT) => false,
+        Err(_) => true,
     }
-    None
 }
 
 fn export_display() {
