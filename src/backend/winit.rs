@@ -259,6 +259,13 @@ pub fn init_winit(
             // --- Put backend back ---
             data.backend = Some(Backend::Winit(backend));
 
+            // --- Bump frame-callback sequence so surfaces can receive a
+            // fresh callback this render tick (winit has no real VBlank). ---
+            {
+                let mut os = crate::state::output_state(&output);
+                os.frame_callback_sequence = os.frame_callback_sequence.wrapping_add(1);
+            }
+
             // --- Post-render ---
             crate::render::refresh_foreign_toplevels(data);
             crate::render::post_render(data, &output);

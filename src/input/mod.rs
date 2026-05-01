@@ -422,6 +422,16 @@ impl DriftWm {
 
         // Pointer confinement: clamp position to the constraint region
         if let Some(focus) = pointer.current_focus() {
+            // Resolve window geometry *before* with_pointer_constraint locks the
+            // surface's user_data: Window::geometry() also calls with_states(),
+            // which would re-lock the same mutex from the same thread and
+            // deadlock (std::sync::Mutex is not reentrant).
+            let window_size = self
+                .space
+                .elements()
+                .find(|w| w.wl_surface().as_deref() == Some(&focus.0))
+                .map(|w| w.geometry().size);
+
             let clamped = with_pointer_constraint(&focus.0, &pointer, |c| {
                 let c = c?;
                 if !c.is_active() { return None; }
@@ -443,11 +453,8 @@ impl DriftWm {
                     ).into();
                     Some(surface_origin + clamped_local)
                 } else {
-                    // No region = confine to entire surface
-                    let window = self.space.elements().find(|w| {
-                        w.wl_surface().as_deref() == Some(&focus.0)
-                    })?;
-                    let size = window.geometry().size;
+                    // No region = confine to entire surface (window geometry pre-fetched above)
+                    let size = window_size?;
                     let clamped_local: Point<f64, smithay::utils::Logical> = (
                         local.x.clamp(0.0, size.w as f64),
                         local.y.clamp(0.0, size.h as f64),

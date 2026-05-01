@@ -94,6 +94,14 @@ pub(crate) fn render_if_needed(device: &UdevDevice, data: &mut DriftWm) {
 
     let mut dev = device.0.borrow_mut();
 
+    // Skip all rendering when DRM is paused (VT switch away). Without this the
+    // event loop wakes constantly on client commits and spam-retries render,
+    // pegging a CPU and starving the rest of the system. Matches niri's
+    // tty.rs render guard.
+    if !dev.drm.is_active() {
+        return;
+    }
+
     // 2. Mark CRTCs dirty for per-output animations
     for (&crtc, surface) in dev.surfaces.iter() {
         if data.output_has_active_animations(&surface.output) {
@@ -438,6 +446,10 @@ pub fn init_udev(
                     tracing::warn!("frame_submitted error: {e:?}");
                 }
                 data.frames_pending.remove(&crtc);
+                {
+                    let mut os = crate::state::output_state(&surface.output);
+                    os.frame_callback_sequence = os.frame_callback_sequence.wrapping_add(1);
+                }
                 // Real VBlank beat any estimated-VBlank timer we might have armed.
                 if let Some(token) = data.estimated_vblank_timers.remove(&crtc) {
                     data.loop_handle.remove(token);
@@ -1102,10 +1114,12 @@ fn render_frame(
             }
             Err(e) => {
                 tracing::warn!("Failed to queue frame: {e:?}");
+                queue_estimated_vblank_timer(data, output, crtc);
             }
         },
         Err(e) => {
             tracing::warn!("Render frame error: {e:?}");
+            queue_estimated_vblank_timer(data, output, crtc);
         }
     }
 
@@ -1151,8 +1165,13 @@ fn queue_estimated_vblank_timer(
         .unwrap_or_else(|| Duration::from_micros(16_667));
 
     let timer = Timer::from_duration(duration);
+    let output_for_timer = output.clone();
     match data.loop_handle.insert_source(timer, move |_, _, data: &mut DriftWm| {
         data.estimated_vblank_timers.remove(&crtc);
+        // No real VBlank arrived in time; advance the throttle sequence so
+        // surfaces can receive a fresh frame_callback on the next render.
+        let mut os = crate::state::output_state(&output_for_timer);
+        os.frame_callback_sequence = os.frame_callback_sequence.wrapping_add(1);
         TimeoutAction::Drop
     }) {
         Ok(tok) => {

@@ -192,6 +192,11 @@ pub struct OutputState {
     pub layout_position: Point<i32, Logical>,
     /// Saved home position for HomeToggle (per-output).
     pub home_return: Option<HomeReturn>,
+    /// Bumped on every VBlank (or render tick on winit). Used to gate
+    /// frame_callback emission to one-per-cycle per surface — a client
+    /// that ignores vsync (e.g. some Wine games) would otherwise commit
+    /// in a tight loop and pin the compositor's main thread.
+    pub frame_callback_sequence: u32,
 }
 
 /// Initialize per-output state on a newly created output.
@@ -222,6 +227,7 @@ pub fn init_output_state(
             last_frame_instant: Instant::now(),
             layout_position,
             home_return: None,
+            frame_callback_sequence: 0,
         })
     });
 }
@@ -964,6 +970,7 @@ mod tests {
             last_frame_instant: Instant::now(),
             layout_position: Point::from(layout_position),
             home_return: None,
+            frame_callback_sequence: 0,
         }
     }
 

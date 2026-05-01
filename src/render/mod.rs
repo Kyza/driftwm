@@ -1349,9 +1349,49 @@ pub fn refresh_foreign_toplevels(state: &mut crate::state::DriftWm) {
     );
 }
 
+/// Per-surface throttling state for frame callbacks. Tracks the (output,
+/// sequence) at which we last delivered a frame callback. A client that
+/// commits a fresh frame within the same vsync cycle does not get another
+/// callback — without this, a vsync-ignoring client (e.g. some Wine games)
+/// can busy-loop the compositor: commit -> we render -> we send callback ->
+/// client commits immediately -> we render again, ad infinitum.
+struct SurfaceFrameThrottlingState {
+    last_sent_at: std::cell::RefCell<Option<(Output, u32)>>,
+}
+
+impl Default for SurfaceFrameThrottlingState {
+    fn default() -> Self {
+        Self { last_sent_at: std::cell::RefCell::new(None) }
+    }
+}
+
+fn frame_callback_filter<'a>(
+    output: &'a Output,
+    sequence: u32,
+) -> impl FnMut(
+    &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    &smithay::wayland::compositor::SurfaceData,
+) -> Option<Output> + Copy + 'a {
+    move |_surface, states| {
+        let throttling = states
+            .data_map
+            .get_or_insert(SurfaceFrameThrottlingState::default);
+        let mut last = throttling.last_sent_at.borrow_mut();
+        if let Some((last_output, last_sequence)) = &*last
+            && last_output == output
+            && *last_sequence == sequence
+        {
+            return None;
+        }
+        *last = Some((output.clone(), sequence));
+        Some(output.clone())
+    }
+}
+
 /// Post-render: frame callbacks, space cleanup.
 pub fn post_render(state: &mut crate::state::DriftWm, output: &Output) {
     let time = state.start_time.elapsed();
+    let sequence = crate::state::output_state(output).frame_callback_sequence;
 
     // Only send frame callbacks to visible windows — off-screen clients
     // naturally throttle to zero FPS without callbacks.
@@ -1373,33 +1413,27 @@ pub fn post_render(state: &mut crate::state::DriftWm, output: &Output) {
         bbox.loc += loc - geom_loc;
         if !visible_rect.overlaps(bbox) { continue }
 
-        window.send_frame(output, time, Some(Duration::ZERO), |_, _| {
-            Some(output.clone())
-        });
+        window.send_frame(output, time, Some(Duration::ZERO), frame_callback_filter(output, sequence));
     }
 
     // Layer surface frame callbacks
     {
         let layer_map = layer_map_for_output(output);
         for layer_surface in layer_map.layers() {
-            layer_surface.send_frame(output, time, Some(Duration::ZERO), |_, _| {
-                Some(output.clone())
-            });
+            layer_surface.send_frame(output, time, Some(Duration::ZERO), frame_callback_filter(output, sequence));
         }
     }
 
     // Canvas-positioned layer surface frame callbacks
     for cl in &state.canvas_layers {
-        cl.surface.send_frame(output, time, Some(Duration::ZERO), |_, _| {
-            Some(output.clone())
-        });
+        cl.surface.send_frame(output, time, Some(Duration::ZERO), frame_callback_filter(output, sequence));
     }
 
     // Cursor surface frame callbacks (animated cursors need these to advance)
     if let CursorImageStatus::Surface(ref surface) = state.cursor.cursor_status {
         smithay::desktop::utils::send_frames_surface_tree(
             surface, output, time, Some(Duration::ZERO),
-            |_, _| Some(output.clone()),
+            frame_callback_filter(output, sequence),
         );
     }
 
@@ -1410,7 +1444,7 @@ pub fn post_render(state: &mut crate::state::DriftWm, output: &Output) {
             output,
             time,
             Some(Duration::ZERO),
-            |_, _| Some(output.clone()),
+            frame_callback_filter(output, sequence),
         );
     }
 
