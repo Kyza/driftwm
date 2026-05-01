@@ -168,7 +168,6 @@ impl DriftWm {
             space: Space::default(),
             popups: PopupManager::default(),
             compositor_state,
-            drm_syncobj_state: None,
             xdg_shell_state,
             shm_state,
             output_manager_state,

@@ -47,15 +47,12 @@ impl XdgShellHandler for DriftWm {
             })
             .unwrap_or((0, 0));
 
-        // Send initial configure — the client won't render until it gets this.
-        // Tiled states are deferred to the first-commit handler (compositor.rs),
-        // where rules/app_id are known. Setting Tiled here with no size makes
-        // SCTK-based clients (alacritty) read "tiled at 0x0" and commit a
-        // 0-width wl_shm buffer, which is a protocol error.
-        if let Some(toplevel) = window.toplevel() {
-            toplevel.send_configure();
-        }
-
+        // Initial configure is deferred to ensure_initial_configure in
+        // compositor.rs first-commit handler so rule-resolved state (size,
+        // decoration_mode, tiled) can be batched into a single configure.
+        // Sending one here would produce a configure with unresolved state,
+        // and a second on first commit — SDL2/SCTK clients have historically
+        // desynced on back-to-back initial configures.
         self.space.map_element(window.clone(), pos, true);
         self.space.raise_element(&window, true);
         self.enforce_below_windows();
@@ -119,7 +116,6 @@ impl XdgShellHandler for DriftWm {
         });
         self.unconstrain_popup(&PopupKind::Xdg(surface.clone()));
         surface.send_repositioned(token);
-        surface.send_configure().ok();
     }
 
     fn fullscreen_request(

@@ -379,7 +379,7 @@ pub fn render_capture_frames(
         if ok {
             let w = capture.buffer_size.w;
             let h = capture.buffer_size.h;
-            capture.frame.transform(smithay::utils::Transform::Normal.into());
+            capture.frame.transform(output_transform.into());
             capture.frame.damage(0, 0, w, h);
             let tv_sec_hi = (timestamp.as_secs() >> 32) as u32;
             let tv_sec_lo = (timestamp.as_secs() & 0xFFFFFFFF) as u32;

@@ -29,7 +29,7 @@ use smithay::{
         rustix::fs::OFlags,
     },
     utils::{DeviceFd, Transform},
-    wayland::{dmabuf::DmabufFeedbackBuilder, drm_syncobj::supports_syncobj_eventfd},
+    wayland::dmabuf::DmabufFeedbackBuilder,
 };
 use smithay::reexports::wayland_server::backend::GlobalId;
 
@@ -190,7 +190,7 @@ pub fn init_udev(
     // 3. Try each GPU until one has connected displays
     let open_flags = OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK;
 
-    let (mut drm, drm_notifier, gbm, renderer, render_formats, render_node, device_fd) = 'found: {
+    let (mut drm, drm_notifier, gbm, renderer, render_formats, render_node) = 'found: {
         for path in &gpu_paths {
             let node = match DrmNode::from_path(path) {
                 Ok(n) => n,
@@ -299,7 +299,7 @@ pub fn init_udev(
                 .unwrap_or(node);
 
             tracing::info!("Using GPU: {}", path.display());
-            break 'found (drm, drm_notifier, gbm, renderer, render_formats, render_node, device_fd);
+            break 'found (drm, drm_notifier, gbm, renderer, render_formats, render_node);
         }
         return Err("No GPU with connected displays found (are you running from a TTY?)".into());
     };
@@ -317,18 +317,6 @@ pub fn init_udev(
             &default_feedback,
         );
     data.dmabuf_global = Some(dmabuf_global);
-    if supports_syncobj_eventfd(&device_fd) {
-        data.drm_syncobj_state =
-            Some(smithay::wayland::drm_syncobj::DrmSyncobjState::new::<DriftWm>(
-                &data.display_handle,
-                device_fd.clone(),
-            ));
-    } else {
-        tracing::info!(
-            "DRM device lacks syncobj eventfd support: disabling linux-drm-syncobj-v1 advertisement and falling back to implicit synchronization"
-        );
-        data.drm_syncobj_state = None;
-    }
 
     // 5. Set up libinput
     let libinput_session = LibinputSessionInterface::from(session.clone());

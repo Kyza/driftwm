@@ -482,7 +482,11 @@ impl XdgDecorationHandler for DriftWm {
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(mode);
         });
-        toplevel.send_configure();
+        // Pre-initial-configure: state is folded into the upcoming initial configure.
+        // Sending one now would race the initial configure — SDL2/SCTK desync on this.
+        if toplevel.is_initial_configure_sent() {
+            toplevel.send_configure();
+        }
     }
 
     fn request_mode(
@@ -497,7 +501,9 @@ impl XdgDecorationHandler for DriftWm {
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(mode);
         });
-        toplevel.send_configure();
+        if toplevel.is_initial_configure_sent() {
+            toplevel.send_configure();
+        }
 
         // Decide whether this client gets a driftwm title bar:
         //   - Explicit rule decoration → only `Server` gets a bar.
@@ -548,7 +554,9 @@ impl XdgDecorationHandler for DriftWm {
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(mode);
         });
-        toplevel.send_configure();
+        if toplevel.is_initial_configure_sent() {
+            toplevel.send_configure();
+        }
     }
 }
 

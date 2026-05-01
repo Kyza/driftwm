@@ -282,7 +282,6 @@ pub struct DriftWm {
 
     // -- global: protocol state --
     pub compositor_state: CompositorState,
-    pub drm_syncobj_state: Option<smithay::wayland::drm_syncobj::DrmSyncobjState>,
     pub xdg_shell_state: XdgShellState,
     pub shm_state: ShmState,
     #[allow(dead_code)]
