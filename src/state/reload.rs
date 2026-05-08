@@ -88,7 +88,10 @@ impl DriftWm {
         self.render.wallpaper_shader = None;
         self.render.cached_wallpaper_bg.clear();
 
-        // Cursor theme/size — validate theme before committing
+        // Cursor theme/size — validate theme before committing. Env vars stay
+        // out of process env: child_env (rebuilt by `Config::from_raw`) carries
+        // XCURSOR_* to spawned children, and the cursor loader reads from
+        // `self.config` directly.
         let theme_changed = new_config.cursor_theme != self.config.cursor_theme;
         let size_changed = new_config.cursor_size != self.config.cursor_size;
         if theme_changed || size_changed {
@@ -96,30 +99,28 @@ impl DriftWm {
                 if let Some(ref theme_name) = new_config.cursor_theme {
                     let theme = xcursor::CursorTheme::load(theme_name);
                     if theme.load_icon("default").is_some() {
-                        unsafe { std::env::set_var("XCURSOR_THEME", theme_name) };
                         true
                     } else {
                         tracing::warn!(
                             "Cursor theme '{theme_name}' not found, keeping current theme"
                         );
                         new_config.cursor_theme = self.config.cursor_theme.clone();
+                        match &self.config.cursor_theme {
+                            Some(t) => {
+                                new_config.child_env.insert("XCURSOR_THEME".into(), t.clone());
+                            }
+                            None => {
+                                new_config.child_env.remove("XCURSOR_THEME");
+                            }
+                        }
                         false
                     }
                 } else {
-                    unsafe { std::env::remove_var("XCURSOR_THEME") };
                     true
                 }
             } else {
                 false
             };
-
-            if size_changed {
-                if let Some(size) = new_config.cursor_size {
-                    unsafe { std::env::set_var("XCURSOR_SIZE", size.to_string()) };
-                } else {
-                    unsafe { std::env::remove_var("XCURSOR_SIZE") };
-                }
-            }
 
             if theme_ok || size_changed {
                 self.cursor.cursor_buffers.clear();
@@ -136,18 +137,12 @@ impl DriftWm {
             tracing::info!("Config reload: trackpad settings applied to all devices");
         }
 
-        // Env vars — diff old vs new, apply changes
-        for (key, value) in &new_config.env {
-            if self.config.env.get(key) != Some(value) {
-                tracing::info!("Config reload: env {key}={value}");
-                unsafe { std::env::set_var(key, value) };
-            }
-        }
-        for key in self.config.env.keys() {
-            if !new_config.env.contains_key(key) {
-                tracing::info!("Config reload: env unset {key}");
-                unsafe { std::env::remove_var(key) };
-            }
+        // Env vars: child_env is rebuilt by `Config::from_raw`, so spawned
+        // children pick up new values automatically. Process env stays
+        // untouched. DISPLAY (set by xwayland::setup at startup) is kept by
+        // copying it forward when a satellite is running.
+        if let Some(display) = self.config.child_env.get("DISPLAY").cloned() {
+            new_config.child_env.insert("DISPLAY".into(), display);
         }
 
         self.config = new_config;

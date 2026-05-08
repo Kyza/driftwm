@@ -131,10 +131,14 @@ pub(crate) fn log_err(context: &str, result: Result<impl Sized, impl std::fmt::D
 /// We also block SIGINT/SIGTERM/SIGHUP via pthread_sigmask for our own
 /// shutdown handling, and that mask is inherited too — clear it so apps
 /// with their own signal handlers still see those signals normally.
-pub fn spawn_command(cmd: &str) {
+///
+/// `env` is layered on top of inherited env (toolkit defaults + user `[env]` +
+/// XCURSOR_*); driftwm never mutates its own process env at runtime, so this
+/// is the only way config-defined env vars reach children.
+pub fn spawn_command(cmd: &str, env: &HashMap<String, String>) {
     use std::os::unix::process::CommandExt;
     let mut child = std::process::Command::new("sh");
-    child.args(["-c", cmd]);
+    child.args(["-c", cmd]).envs(env);
     unsafe {
         child.pre_exec(|| {
             libc::signal(libc::SIGCHLD, libc::SIG_DFL);
@@ -1134,7 +1138,9 @@ impl DriftWm {
     }
 
     pub fn load_xcursor(&mut self, name: &str) -> Option<&CursorFrames> {
-        self.cursor.load_xcursor(name)
+        let theme = self.config.cursor_theme.as_deref().unwrap_or("default");
+        let size = self.config.cursor_size.unwrap_or(24);
+        self.cursor.load_xcursor(name, theme, size)
     }
 }
 

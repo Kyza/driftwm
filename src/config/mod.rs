@@ -97,6 +97,10 @@ pub struct Config {
     pub xwayland_path: String,
     pub window_placement: WindowPlacement,
     pub env: HashMap<String, String>,
+    /// Pre-merged env passed to spawned child processes via `Command::envs()`.
+    /// Layers (later wins): toolkit defaults → XCURSOR_* → user `[env]`. Built
+    /// once in `from_raw` so we never touch process env at runtime.
+    pub child_env: HashMap<String, String>,
     pub output_configs: Vec<OutputConfig>,
     bindings: HashMap<KeyCombo, Action>,
     pub mouse: ContextBindings<MouseBinding, MouseAction>,
@@ -215,30 +219,12 @@ impl Config {
                 ConfigFile::default()
             }
         };
-        // Set user env vars first (unsafe — process-wide mutation,
-        // only safe at startup before threads are spawned)
-        for (key, value) in &raw.env {
-            unsafe { std::env::set_var(key, value) };
-        }
-        // Toolkit fallbacks — only set if not already in env (user config wins)
-        for &(key, value) in TOOLKIT_DEFAULTS {
-            if std::env::var(key).is_err() {
-                unsafe { std::env::set_var(key, value) };
-            }
-        }
-        // Cursor env vars
-        if let Some(ref theme) = raw.cursor.theme {
-            unsafe { std::env::set_var("XCURSOR_THEME", theme) };
-        }
-        if let Some(size) = raw.cursor.size {
-            unsafe { std::env::set_var("XCURSOR_SIZE", size.to_string()) };
-        }
-
         Self::from_raw(raw)
     }
 
     /// Build a Config from a parsed (but unvalidated) ConfigFile.
-    /// Does not set env vars — that's done in `load()` only.
+    /// Never touches process env — child env is built into `child_env` and
+    /// applied via `Command::envs()` per spawn.
     fn from_raw(raw: ConfigFile) -> Self {
         let mod_key = match raw.mod_key.as_deref() {
             Some("alt") => ModKey::Alt,
@@ -474,6 +460,20 @@ impl Config {
             0.94
         };
 
+        let mut child_env: HashMap<String, String> = TOOLKIT_DEFAULTS
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        if let Some(theme) = &raw.cursor.theme {
+            child_env.insert("XCURSOR_THEME".into(), theme.clone());
+        }
+        if let Some(size) = raw.cursor.size {
+            child_env.insert("XCURSOR_SIZE".into(), size.to_string());
+        }
+        for (k, v) in &raw.env {
+            child_env.insert(k.clone(), v.clone());
+        }
+
         Self {
             mod_key,
             focus_follows_mouse: raw.focus_follows_mouse.unwrap_or(false),
@@ -520,6 +520,7 @@ impl Config {
                 .collect(),
             autostart: raw.autostart.unwrap_or_default(),
             env: raw.env,
+            child_env,
             window_rules,
             xwayland_enabled: raw.xwayland.enabled,
             xwayland_path: expand_tilde(&raw.xwayland.path),

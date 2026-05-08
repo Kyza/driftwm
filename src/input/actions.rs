@@ -27,7 +27,7 @@ impl DriftWm {
         match action {
             Action::Exec(cmd) => {
                 tracing::info!("Spawning: {cmd}");
-                crate::state::spawn_command(cmd);
+                crate::state::spawn_command(cmd, &self.config.child_env);
                 let now = std::time::Instant::now();
                 self.cursor.exec_cursor_show_at =
                     Some(now + std::time::Duration::from_millis(150));
@@ -36,7 +36,7 @@ impl DriftWm {
             }
             Action::Spawn(cmd) => {
                 tracing::info!("Spawning (no cursor): {cmd}");
-                crate::state::spawn_command(cmd);
+                crate::state::spawn_command(cmd, &self.config.child_env);
             }
             Action::CloseWindow => {
                 if let Some(window) = self.focused_window().filter(|w| !w.is_widget()) {

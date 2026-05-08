@@ -115,19 +115,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     unsafe { std::env::set_var("XDG_SESSION_CLASS", "user") };
     unsafe { std::env::set_var("XDG_SESSION_DESKTOP", "driftwm") };
 
-    // Export only session-level vars to systemd and D-Bus.
-    // Toolkit hints (MOZ_ENABLE_WAYLAND, QT_QPA_PLATFORM, etc.) stay in our
-    // process env for direct child processes but should NOT leak to
-    // D-Bus-activated services or override PAM-set vars.
+    // Export only session-level vars to systemd and D-Bus. Pass them through
+    // Command::env() rather than relying on process env — the policy is "don't
+    // touch process env at runtime", so the shell-out gets only what we hand it.
     {
-        let session_vars = "WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_DESKTOP";
+        let session_vars = [
+            ("WAYLAND_DISPLAY", socket_name.as_str()),
+            ("XDG_CURRENT_DESKTOP", "driftwm"),
+            ("XDG_SESSION_TYPE", "wayland"),
+            ("XDG_SESSION_DESKTOP", "driftwm"),
+        ];
+        let names = session_vars
+            .iter()
+            .map(|(k, _)| *k)
+            .collect::<Vec<_>>()
+            .join(" ");
         let cmd = format!(
-            "systemctl --user import-environment {session_vars}; \
+            "systemctl --user import-environment {names}; \
              hash dbus-update-activation-environment 2>/dev/null && \
-             dbus-update-activation-environment {session_vars}"
+             dbus-update-activation-environment {names}"
         );
         match std::process::Command::new("/bin/sh")
             .args(["-c", &cmd])
+            .envs(session_vars.iter().copied())
             .spawn()
         {
             Ok(mut child) => {
@@ -197,10 +207,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             smithay::reexports::calloop::timer::Timer::from_duration(
                 std::time::Duration::from_millis(100),
             ),
-            move |_, _, _data| {
+            move |_, _, data: &mut DriftWm| {
                 for cmd in &autostart {
                     tracing::info!("Autostart: {cmd}");
-                    state::spawn_command(cmd);
+                    state::spawn_command(cmd, &data.config.child_env);
                 }
                 smithay::reexports::calloop::timer::TimeoutAction::Drop
             },

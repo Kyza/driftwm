@@ -61,6 +61,7 @@ pub fn setup(state: &mut DriftWm) {
     let mut process = Command::new(&path);
     process
         .arg(&display_name)
+        .envs(&state.config.child_env)
         .env_remove("DISPLAY")
         .env_remove("RUST_BACKTRACE")
         .env_remove("RUST_LIB_BACKTRACE")
@@ -94,13 +95,14 @@ pub fn setup(state: &mut DriftWm) {
         child.id()
     );
 
-    // SAFETY: setup() runs at startup before any threads are spawned that
-    // mutate env vars; matches the existing DRIFTWM_CONFIG/WAYLAND_DISPLAY
-    // pattern in main.rs.
-    unsafe {
-        std::env::set_var("DISPLAY", &display_name);
-    }
-    export_display();
+    // Make DISPLAY visible to child processes. Process env stays untouched —
+    // we add it to child_env so subsequent `spawn_command` calls inherit it.
+    state
+        .config
+        .child_env
+        .insert("DISPLAY".into(), display_name.clone());
+
+    export_display(&display_name);
 
     state.satellite = Some(Satellite { child });
 }
@@ -167,11 +169,15 @@ fn path_present(path: &str) -> bool {
     }
 }
 
-fn export_display() {
+fn export_display(display_name: &str) {
     let cmd = "systemctl --user import-environment DISPLAY; \
                hash dbus-update-activation-environment 2>/dev/null && \
                dbus-update-activation-environment DISPLAY";
-    match Command::new("/bin/sh").args(["-c", cmd]).spawn() {
+    match Command::new("/bin/sh")
+        .args(["-c", cmd])
+        .env("DISPLAY", display_name)
+        .spawn()
+    {
         Ok(mut child) => {
             if let Err(e) = child.wait() {
                 tracing::warn!("Error waiting for DISPLAY import: {e}");
