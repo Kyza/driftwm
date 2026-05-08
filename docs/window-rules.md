@@ -33,10 +33,10 @@ opacity = 0.85
 
 At least one criterion is required. All specified criteria must match.
 
-| Field        | Matches                                              |
-|--------------|------------------------------------------------------|
-| `app_id`     | Wayland app_id (X11 apps via xwayland-satellite arrive with `app_id` set from `WM_CLASS` instance, typically lowercase) |
-| `title`      | Window title                                         |
+| Field    | Matches                                                                                                                 |
+| -------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `app_id` | Wayland app_id (X11 apps via xwayland-satellite arrive with `app_id` set from `WM_CLASS` instance, typically lowercase) |
+| `title`  | Window title                                                                                                            |
 
 ### Finding a window's identifiers
 
@@ -44,19 +44,22 @@ At least one criterion is required. All specified criteria must match.
 cat $XDG_RUNTIME_DIR/driftwm/state   # look for the "windows=" line
 ```
 
-For X11 apps run through xwayland-satellite, the `app_id` matches the X11
-`WM_CLASS` instance (lowercase). For example, Steam appears as `steam`, not
-`Steam`.
+To get titles and app ids of all current non-widget windows:
+
+```sh
+sed -n 's/^windows=//p' $XDG_RUNTIME_DIR/driftwm/state | \
+jq '.[] | select(.is_widget == false) | {app_id, title}'
+```
 
 ## Pattern syntax
 
 All match fields support three syntaxes:
 
-| Syntax       | Example                    | Meaning                          |
-|--------------|----------------------------|----------------------------------|
-| Exact string | `"kitty"`                  | Exact match (case-sensitive)     |
-| Glob         | `"steam_app_*"`            | `*` matches any sequence of chars |
-| Regex        | `"/^steam_app_\\d+$/"`     | Full regular expression (wrap in `/…/`) |
+| Syntax       | Example                | Meaning                                 |
+| ------------ | ---------------------- | --------------------------------------- |
+| Exact string | `"kitty"`              | Exact match (case-sensitive)            |
+| Glob         | `"steam_app_*"`        | `*` matches any sequence of chars       |
+| Regex        | `"/^steam_app_\\d+$/"` | Full regular expression (wrap in `/…/`) |
 
 Multiple `*` wildcards are allowed in glob patterns: `"*terminal*"`.
 
@@ -64,35 +67,35 @@ Regex patterns use the `regex` crate (RE2-compatible, no backreferences).
 
 ## Effect fields
 
-| Field        | Type          | Default   | Description |
-|--------------|---------------|-----------|-------------|
-| `position`   | `[x, y]`      | —         | Place window at canvas coordinates (window center, Y-up) |
-| `size`       | `[w, h]`      | —         | Force window dimensions in pixels |
-| `widget`     | `bool`        | `false`   | Pin window: immovable, below normal windows, excluded from navigation/alt-tab |
-| `decoration` | string        | inherited | Override decoration mode (see below) |
-| `blur`       | `bool`        | `false`   | Blur compositor background behind this window |
-| `opacity`    | `0.0`–`1.0`   | `1.0`     | Window transparency (1.0 = fully opaque) |
-| `pass_keys`  | `bool` or `["combo", …]` | `false` | Forward keys to the app — see below |
+| Field        | Type                     | Default   | Description                                                                   |
+| ------------ | ------------------------ | --------- | ----------------------------------------------------------------------------- |
+| `position`   | `[x, y]`                 | —         | Place window at canvas coordinates (window center, Y-up)                      |
+| `size`       | `[w, h]`                 | —         | Force window dimensions in pixels                                             |
+| `widget`     | `bool`                   | `false`   | Pin window: immovable, below normal windows, excluded from navigation/alt-tab |
+| `decoration` | string                   | inherited | Override decoration mode (see below)                                          |
+| `blur`       | `bool`                   | `false`   | Blur compositor background behind this window                                 |
+| `opacity`    | `0.0`–`1.0`              | `1.0`     | Window transparency (1.0 = fully opaque)                                      |
+| `pass_keys`  | `bool` or `["combo", …]` | `false`   | Forward keys to the app — see below                                           |
 
 ### `decoration` values
 
-| Value         | Description |
-|---------------|-------------|
-| `"client"`    | CSD — client draws its own titlebar (default) |
-| `"server"`    | SSD — driftwm draws a titlebar with a close button |
-| `"borderless"`| SSD — no titlebar, but shadow + corner clipping |
-| `"none"`      | SSD — completely bare, no chrome at all |
+| Value          | Description                                        |
+| -------------- | -------------------------------------------------- |
+| `"client"`     | CSD — client draws its own titlebar (default)      |
+| `"server"`     | SSD — driftwm draws a titlebar with a close button |
+| `"borderless"` | SSD — no titlebar, but shadow + corner clipping    |
+| `"none"`       | SSD — completely bare, no chrome at all            |
 
 ### `pass_keys` details
 
 `pass_keys` controls which compositor keybindings are forwarded to the focused
 window instead of being handled by the compositor:
 
-| Value | Behaviour |
-|-------|-----------|
-| `false` (or omit) | Compositor handles all keybindings normally (default) |
-| `true` | **All** keys forwarded — no compositor shortcuts fire while this window has focus |
-| `["mod+q", "ctrl+q"]` | **Only** the listed combos are forwarded; all other shortcuts stay active |
+| Value                 | Behaviour                                                                         |
+| --------------------- | --------------------------------------------------------------------------------- |
+| `false` (or omit)     | Compositor handles all keybindings normally (default)                             |
+| `true`                | **All** keys forwarded — no compositor shortcuts fire while this window has focus |
+| `["mod+q", "ctrl+q"]` | **Only** the listed combos are forwarded; all other shortcuts stay active         |
 
 VT switching (`Ctrl+Alt+F1`–`F12`) **always stays in the compositor** regardless
 of `pass_keys`.
@@ -100,6 +103,7 @@ of `pass_keys`.
 Key combo syntax is the same as in `[keybindings]`: `mod+key`, `ctrl+shift+key`, etc.
 
 When multiple rules match the same window:
+
 - `true` is sticky-on: if **any** rule sets `pass_keys = true`, the result is `true`.
 - `["combo", …]` lists are **unioned** across all matching rules.
 - `true` overrides a list: if one rule says `true` and another says `["mod+q"]`, the result is `true`.

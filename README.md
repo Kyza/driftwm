@@ -122,7 +122,7 @@ path = "~/.config/driftwm/bg.glsl"
 https://github.com/user-attachments/assets/af603001-9f08-4d42-b50a-0342d06e954b
 
 Match windows by `app_id` and/or `title` (glob patterns) and control
-everything: position, size, decoration mode, blur, opacity, and widget
+everything: position, size, decoration mode, blur, opacity, pass-through keys, and widget
 behavior. All fields are independent and combine freely.
 
 **Widgets**: set `widget = true` to pin a window in place — immovable, below
@@ -147,6 +147,8 @@ decoration = "none"
 
 > **Tip:** to find a window's `app_id`, check `$XDG_RUNTIME_DIR/driftwm/state` —
 > the `windows` field lists all open windows by their app ID.
+
+See [docs/window_rules.md](window_rules.md) for more details.
 
 ### Multi-monitor
 

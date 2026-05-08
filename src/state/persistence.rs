@@ -9,6 +9,7 @@
 //! `is_focused`/`is_widget`. Position/size match the window-rules format in
 //! config.toml: position is the **window center** with **Y-up** convention.
 
+use serde::Serialize;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::seat::WaylandFocus;
 use std::collections::HashMap;
@@ -18,14 +19,12 @@ use driftwm::window_ext::WindowExt;
 
 use super::{DriftWm, output_state};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct WindowFingerprint {
     pub app_id: String,
     pub title: String,
-    pub x: i32,
-    pub y: i32,
-    pub w: i32,
-    pub h: i32,
+    pub position: [i32; 2],
+    pub size: [i32; 2],
     pub is_focused: bool,
     pub is_widget: bool,
 }
@@ -37,10 +36,8 @@ pub struct WindowFingerprint {
 impl PartialEq for WindowFingerprint {
     fn eq(&self, o: &Self) -> bool {
         self.app_id == o.app_id
-            && self.x == o.x
-            && self.y == o.y
-            && self.w == o.w
-            && self.h == o.h
+            && self.position == o.position
+            && self.size == o.size
             && self.is_focused == o.is_focused
             && self.is_widget == o.is_widget
     }
@@ -91,10 +88,8 @@ impl DriftWm {
             window_fps.push(WindowFingerprint {
                 app_id,
                 title,
-                x: rx,
-                y: ry,
-                w: size.w,
-                h: size.h,
+                position: [rx, ry],
+                size: [size.w, size.h],
                 is_focused,
                 is_widget,
             });
@@ -180,26 +175,11 @@ impl DriftWm {
             }
         }
 
-        if !window_fps.is_empty() {
+        if !window_fps.is_empty()
+            && let Ok(json) = serde_json::to_string(&window_fps)
+        {
             content += "windows=";
-            content.push('[');
-            for (i, fp) in window_fps.iter().enumerate() {
-                if i > 0 {
-                    content.push(',');
-                }
-                content += &format!(
-                    r#"{{"app_id":{app},"title":{title},"position":[{x},{y}],"size":[{w},{h}],"is_focused":{focused},"is_widget":{widget}}}"#,
-                    app = json_escape(&fp.app_id),
-                    title = json_escape(&fp.title),
-                    x = fp.x,
-                    y = fp.y,
-                    w = fp.w,
-                    h = fp.h,
-                    focused = fp.is_focused,
-                    widget = fp.is_widget,
-                );
-            }
-            content.push(']');
+            content += &json;
             content.push('\n');
         }
 
@@ -231,24 +211,6 @@ impl DriftWm {
             self.state_file_windows = window_fps;
         }
     }
-}
-
-fn json_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
 }
 
 fn state_file_dir() -> Option<std::path::PathBuf> {

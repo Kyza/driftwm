@@ -398,6 +398,7 @@ dependencies = [
  "libdisplay-info",
  "regex",
  "serde",
+ "serde_json",
  "smithay",
  "smithay-drm-extras",
  "toml 0.8.23",
