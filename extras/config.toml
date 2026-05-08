@@ -1,18 +1,18 @@
 # driftwm — personal config (symlink to ~/.config/driftwm/config.toml)
 
-# autostart = [
-#     "eval $(gnome-keyring-daemon --start --components=secrets,ssh) && systemctl --user import-environment SSH_AUTH_SOCK GNOME_KEYRING_CONTROL && dbus-update-activation-environment SSH_AUTH_SOCK GNOME_KEYRING_CONTROL",
-#     "/usr/libexec/polkit-gnome-authentication-agent-1",
-#     "swayosd-server --top-margin 0.95",
-#     "swaync",
-#      "waybar -c ~/.config/waybar/taskbar.jsonc -s ~/.config/waybar/taskbar.css",
-#      "sleep 1 && waybar -c ~/.config/waybar/tray.jsonc -s ~/.config/waybar/tray.css",
-#      "vorta -d",
-#      "~/Documents/work/scripts/driftwm/extras/widgets/launch.sh",
-#      "~/Documents/work/scripts/driftwm/extras/scripts/battery_notify.sh",
-#      "~/Documents/work/scripts/driftwm/extras/scripts/theme-watch.sh",
-#      "swayidle -w timeout 300 'brightnessctl -s set 10%' resume 'brightnessctl -r' timeout 330 '~/Documents/work/scripts/driftwm/extras/scripts/lock.sh' timeout 600 'systemctl suspend' before-sleep '~/Documents/work/scripts/driftwm/extras/scripts/lock.sh'",
-# ]
+autostart = [
+    "eval $(gnome-keyring-daemon --start --components=secrets,ssh) && systemctl --user import-environment SSH_AUTH_SOCK GNOME_KEYRING_CONTROL && dbus-update-activation-environment SSH_AUTH_SOCK GNOME_KEYRING_CONTROL",
+    "/usr/libexec/polkit-gnome-authentication-agent-1",
+    "swayosd-server --top-margin 0.95",
+    "swaync",
+     "waybar -c ~/.config/waybar/taskbar.jsonc -s ~/.config/waybar/taskbar.css",
+     "sleep 1 && waybar -c ~/.config/waybar/tray.jsonc -s ~/.config/waybar/tray.css",
+     "vorta -d",
+     "~/Documents/work/scripts/driftwm/extras/widgets/launch.sh",
+     "~/Documents/work/scripts/driftwm/extras/scripts/battery_notify.sh",
+     "~/Documents/work/scripts/driftwm/extras/scripts/theme-watch.sh",
+     "swayidle -w timeout 300 'brightnessctl -s set 10%' resume 'brightnessctl -r' timeout 330 '~/Documents/work/scripts/driftwm/extras/scripts/lock.sh' timeout 600 'systemctl suspend' before-sleep '~/Documents/work/scripts/driftwm/extras/scripts/lock.sh'",
+]
 
 focus_follows_mouse = true
 window_placement = "auto"
