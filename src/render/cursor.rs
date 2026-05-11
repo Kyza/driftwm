@@ -70,23 +70,25 @@ pub fn build_cursor_elements(
     };
 
     // Drag-and-drop icon
-    if let Some(ref icon) = state.dnd_icon {
-        if icon.alive() {
-            let pos: Point<i32, Physical> = (
-                physical_pos.x as i32,
-                physical_pos.y as i32,
-            ).into();
-            let surface_elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-                smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
-                    renderer,
-                    icon,
-                    pos,
-                    Scale::from(1.0),
-                    alpha,
-                    Kind::Cursor,
-                );
-            result.extend(surface_elems.into_iter().map(|e| OutputRenderElements::CursorSurface(e.into())));
-        }
+    if let Some(ref icon) = state.dnd_icon
+        && icon.alive()
+    {
+        let pos: Point<i32, Physical> =
+            (physical_pos.x as i32, physical_pos.y as i32).into();
+        let surface_elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+            smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
+                renderer,
+                icon,
+                pos,
+                Scale::from(1.0),
+                alpha,
+                Kind::Cursor,
+            );
+        result.extend(
+            surface_elems
+                .into_iter()
+                .map(|e| OutputRenderElements::CursorSurface(e.into())),
+        );
     }
 
     result
