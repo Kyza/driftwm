@@ -334,15 +334,26 @@ pub(super) fn push_border_element(
     let inner_y = inner_logical.loc.y.round() as i32;
     let inner_w = inner_logical.size.w.round() as i32;
     let inner_h = inner_logical.size.h.round() as i32;
+
+    // Snap stroke width to whole physical pixels (1px floor) so every side
+    // paints the same integer count of pixels regardless of fractional scale
+    // or zoom. Then size the element with one extra physical pixel of slack:
+    // smithay's default loc/size rounding can shift the element's physical
+    // extent by ±1 px, so without slack the stroke band falls partially
+    // outside the rasterized rect on one side and gets clipped (the cause
+    // of the 1-px-vs-2-px asymmetry).
+    let total_scale = output_scale.x * zoom;
+    let border_w_phys = ((bw as f64) * total_scale).round().max(1.0) as f32;
+    let pad_logical =
+        (((border_w_phys as f64) + 1.0) / total_scale).ceil() as i32;
     let border_area = Rectangle::new(
-        Point::<i32, Logical>::from((inner_x - bw, inner_y - bw)),
-        Size::<i32, Logical>::from((inner_w + 2 * bw, inner_h + 2 * bw)),
+        Point::<i32, Logical>::from((inner_x - pad_logical, inner_y - pad_logical)),
+        Size::<i32, Logical>::from((inner_w + 2 * pad_logical, inner_h + 2 * pad_logical)),
     );
 
     let inner_pre_zoom: Rectangle<i32, Physical> =
         inner_logical.to_physical_precise_round(output_scale);
     let inner_r_phys = inner_radius_logical * output_scale.x as f32 * zoom as f32;
-    let border_w_phys = bw as f32 * output_scale.x as f32 * zoom as f32;
 
     let (fresh_uniforms, fresh_key) = border_uniforms_precise(
         inner_pre_zoom,
