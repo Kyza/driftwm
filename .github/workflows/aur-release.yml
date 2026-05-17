@@ -30,19 +30,26 @@ jobs:
           SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
           pacman -Sy --noconfirm --needed git openssh
-          mkdir -p ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/aur
-          chmod 600 ~/.ssh/aur
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
-          cat >> ~/.ssh/config <<EOF
+          mkdir -p /root/.ssh
+          printf '%s\n' "$SSH_KEY" > /root/.ssh/aur
+          chmod 600 /root/.ssh/aur
+          ssh-keyscan aur.archlinux.org >> /root/.ssh/known_hosts 2>/dev/null
+          cat >> /root/.ssh/config <<EOF
           Host aur.archlinux.org
             User aur
-            IdentityFile ~/.ssh/aur
+            IdentityFile /root/.ssh/aur
             IdentitiesOnly yes
           EOF
           git config --global user.name "driftwm-release-bot"
           git config --global user.email "2601074@gmail.com"
           useradd -m builder
+          cat >> /etc/makepkg.conf <<'EOF'
+          BUILDDIR=/tmp
+          PKGDEST=/tmp
+          SRCDEST=/tmp
+          SRCPKGDEST=/tmp
+          LOGDEST=/tmp
+          EOF
 
       - name: Publish driftwm
         env:
