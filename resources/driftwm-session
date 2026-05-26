@@ -1,19 +1,16 @@
 #!/bin/sh
-# driftwm-session — launched by display manager (GDM) instead of bare driftwm.
-# Re-execs through login shell to pick up .profile / PAM env vars,
-# then imports the full environment into systemd/D-Bus so services like
-# gnome-keyring (PAM-unlocked by GDM) are visible to all activated units.
+# driftwm-session — launched by display manager (e.g. GDM) instead of bare driftwm.
+# Re-execs through a login shell to pick up /etc/profile, ~/.profile and PAM
+# env vars, then propagates that environment into systemd/D-Bus so user
+# services activated later see the same env as the compositor.
 
 if [ -z "$_DRIFTWM_WRAPPER" ]; then
     export _DRIFTWM_WRAPPER=1
     exec "$SHELL" -l -c "$0 $@"
 fi
 
-# Import the full login manager environment into systemd and D-Bus.
-# GDM's PAM already started and unlocked gnome-keyring — this makes
-# SSH_AUTH_SOCK, GNOME_KEYRING_CONTROL, etc. visible to D-Bus-activated
-# services so they find the unlocked daemon instead of socket-activating
-# a fresh locked one.
+# Import the login environment into systemd and D-Bus so anything activated
+# via the user manager or D-Bus (portals, waybar, ...) inherits the same env.
 systemctl --user import-environment
 hash dbus-update-activation-environment 2>/dev/null && \
     dbus-update-activation-environment --all
