@@ -151,6 +151,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // Notify systemd of readiness so units gated by Before=graphical-session.target
+    // (e.g. foot-server.socket via ConditionEnvironment=WAYLAND_DISPLAY) only get
+    // their conditions evaluated once WAYLAND_DISPLAY is in the user env. Pass
+    // unset_env=true so children spawned later don't inherit NOTIFY_SOCKET.
+    if let Err(e) = sd_notify::notify(true, &[sd_notify::NotifyState::Ready]) {
+        tracing::warn!("Failed to send READY=1 to systemd: {e}");
+    }
+
     event_loop
         .handle()
         .insert_source(listening_socket, |stream, _, data: &mut DriftWm| {
