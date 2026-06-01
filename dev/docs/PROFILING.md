@@ -78,5 +78,11 @@ The script finds `tracy-csvexport` via `$TRACY_CSVEXPORT`, then PATH, then
 
 - `src/main.rs` — Tracy client startup + optional profiling allocator.
 - `src/backend/udev.rs` / `src/backend/winit.rs` — per-frame span + frame mark.
-- `src/render/mod.rs` — `compose_frame` span.
+  udev `render_frame` splits into `udev::build_cursor_elements`,
+  `udev::compositor_render_frame`, `udev::queue_frame`, `udev::captures`,
+  `udev::post_render`.
+- `src/render/mod.rs` — `compose_frame` span, split into `compose::windows`,
+  `compose::layers`, `compose::blur`.
+- `src/render/shader_chunks.rs` — `ShaderChunkCache::render_elements` span, with a
+  per-bake `bake::alloc` / `bake::render` split.
 - `src/render/tile_chunks.rs` — chunked tile-bg spans + `bg_chunks.*` plots.

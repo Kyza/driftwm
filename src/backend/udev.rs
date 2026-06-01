@@ -1399,6 +1399,8 @@ fn render_frame(
     } else {
         data.config.inactive_cursor_opacity as f32
     };
+    #[cfg(feature = "profile-with-tracy")]
+    let _cursor_span = tracy_client::span!("udev::build_cursor_elements");
     let cursor_elements = crate::render::build_cursor_elements(
         data,
         renderer,
@@ -1407,6 +1409,8 @@ fn render_frame(
         output.current_scale().fractional_scale(),
         cursor_alpha,
     );
+    #[cfg(feature = "profile-with-tracy")]
+    drop(_cursor_span);
     let renderer = backend.renderer();
     let elements = crate::render::compose_frame(data, renderer, output, cursor_elements);
 
@@ -1429,12 +1433,16 @@ fn render_frame(
 
     // Render via DRM compositor (latency-sensitive — do first)
     let renderer = backend.renderer();
+    #[cfg(feature = "profile-with-tracy")]
+    let _composite_span = tracy_client::span!("udev::compositor_render_frame");
     let render_result = compositor.render_frame::<_, OutputRenderElements>(
         renderer,
         &elements,
         [0.0f32, 0.0, 0.0, 1.0],
         frame_flags,
     );
+    #[cfg(feature = "profile-with-tracy")]
+    drop(_composite_span);
 
     // CPU-wait on the GPU fence when KMS can't gate the flip on it
     // (typical on NVIDIA — EGL fence isn't exportable as IN_FENCE_FD).
@@ -1456,7 +1464,12 @@ fn render_frame(
             crate::render::update_primary_scanout_output(data, output, &render_result.states);
             let feedback =
                 crate::render::take_presentation_feedback(data, output, &render_result.states);
-            match compositor.queue_frame(feedback) {
+            let queue_result = {
+                #[cfg(feature = "profile-with-tracy")]
+                let _span = tracy_client::span!("udev::queue_frame");
+                compositor.queue_frame(feedback)
+            };
+            match queue_result {
                 Ok(()) => {
                     data.frames_pending.insert(crtc);
                     // Bump the frame-callback sequence here, before post_render
@@ -1486,6 +1499,8 @@ fn render_frame(
     }
 
     // Fulfill capture requests after main render
+    #[cfg(feature = "profile-with-tracy")]
+    let _captures_span = tracy_client::span!("udev::captures");
     let renderer = backend.renderer();
     crate::render::render_screencopy(data, renderer, output, &elements);
 
@@ -1494,6 +1509,8 @@ fn render_frame(
 
     let renderer = backend.renderer();
     crate::render::render_toplevel_captures(data, renderer);
+    #[cfg(feature = "profile-with-tracy")]
+    drop(_captures_span);
 
     // Put backend back
     data.backend = Some(backend);
@@ -1507,8 +1524,12 @@ fn render_frame(
     data.write_state_file_if_dirty();
 
     // Post-render
+    #[cfg(feature = "profile-with-tracy")]
+    let _post_span = tracy_client::span!("udev::post_render");
     crate::render::post_render(data, output);
     data.display_handle.flush_clients().ok();
+    #[cfg(feature = "profile-with-tracy")]
+    drop(_post_span);
 
     #[cfg(feature = "profile-with-tracy")]
     {

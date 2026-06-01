@@ -159,6 +159,8 @@ impl ShaderChunkCache {
         let (area_canvas, fbo_px, apron_canvas) = apron_dims(chunk_size, bake_px);
 
         let buf_size = Size::<i32, Buffer>::from((fbo_px, fbo_px));
+        #[cfg(feature = "profile-with-tracy")]
+        let _alloc_span = tracy_client::span!("bake::alloc");
         let mut tex =
             match Offscreen::<GlesTexture>::create_buffer(renderer, Fourcc::Abgr8888, buf_size) {
                 Ok(t) => t,
@@ -167,6 +169,8 @@ impl ShaderChunkCache {
                     return;
                 }
             };
+        #[cfg(feature = "profile-with-tracy")]
+        drop(_alloc_span);
 
         // Render over [origin - apron, origin + chunk_size + apron]; u_camera
         // shifts by the apron so the shader still sees absolute canvas positions.
@@ -194,6 +198,8 @@ impl ShaderChunkCache {
         );
 
         let ok = {
+            #[cfg(feature = "profile-with-tracy")]
+            let _render_span = tracy_client::span!("bake::render");
             let mut target = match renderer.bind(&mut tex) {
                 Ok(t) => t,
                 Err(e) => {

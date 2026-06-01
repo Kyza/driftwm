@@ -214,6 +214,8 @@ pub fn compose_frame(
         .and_then(|kb| kb.current_focus())
         .map(|f| f.0);
 
+    #[cfg(feature = "profile-with-tracy")]
+    let _windows_span = tracy_client::span!("compose::windows");
     for window in state.space.elements().rev() {
         let Some(loc) = state.space.element_location(window) else {
             continue;
@@ -659,6 +661,9 @@ pub fn compose_frame(
         }
     }
 
+    #[cfg(feature = "profile-with-tracy")]
+    drop(_windows_span);
+
     let canvas_layer_elements = build_canvas_layer_elements(state, renderer, output, camera, zoom);
 
     let outline_elements =
@@ -707,6 +712,8 @@ pub fn compose_frame(
     };
 
     let is_fullscreen = state.is_output_fullscreen(output);
+    #[cfg(feature = "profile-with-tracy")]
+    let _layers_span = tracy_client::span!("compose::layers");
     let (overlay_elements, overlay_blur) = build_layer_elements(
         state,
         output,
@@ -726,6 +733,8 @@ pub fn compose_frame(
     };
     let (background_layer_elements, _) =
         build_layer_elements(state, output, renderer, WlrLayer::Background, None);
+    #[cfg(feature = "profile-with-tracy")]
+    drop(_layers_span);
 
     // Prefix offsets locate each group in all_elements for blur insertion.
     let overlay_prefix = cursor_elements.len();
@@ -764,6 +773,8 @@ pub fn compose_frame(
     all_elements.extend(background_layer_elements);
 
     if !all_blur_requests.is_empty() {
+        #[cfg(feature = "profile-with-tracy")]
+        let _blur_span = tracy_client::span!("compose::blur");
         process_blur_requests(
             state,
             renderer,
