@@ -27,12 +27,12 @@ Extract a smithay-free `Stage` as the source of truth for window state, z-order,
 
 ### Callsite buckets (115 total)
 
-| Bucket                                   | Count | Action                                                        |
-| ---------------------------------------- | ----- | ------------------------------------------------------------- |
+| Bucket                                   | Count                      | Action                                                            |
+| ---------------------------------------- | -------------------------- | ----------------------------------------------------------------- |
 | **mutate-model** (map/raise/unmap/focus) | 25 (+ ~4 decorations-sync) | move to `Stage`; emit add/remove events for `decorations` HashMap |
-| **read-model** (elements/location/under) | 68    | convert opportunistically; most read from `Stage` eventually |
-| **render-only** (outputs/refresh)        | 21    | stay on `Space`                                               |
-| **smithay-internal**                     | 1     | stay                                                          |
+| **read-model** (elements/location/under) | 68                         | convert opportunistically; most read from `Stage` eventually      |
+| **render-only** (outputs/refresh)        | 21                         | stay on `Space`                                                   |
+| **smithay-internal**                     | 1                          | stay                                                              |
 
 Representative mutate-model sites: `handlers/xdg_shell.rs:70` (new toplevel map), `handlers/xdg_shell.rs:317` (destroy unmap), `state/fit.rs:162` (toggle_fit map), `state/mod.rs:663` (`raise_and_focus`).
 
@@ -60,7 +60,10 @@ Representative mutate-model sites: `handlers/xdg_shell.rs:70` (new toplevel map)
 | `toggle_fit_window`                      | `state/fit.rs:222`            | 88    |
 | `decoration_toggle_fit`                  | `state/fit.rs:344`            | 8     |
 
-Plus `MoveSurfaceGrab::update` in `grabs/move_grab.rs` (cluster moves via `space.map_element`).
+Plus two grab-driven cluster mutations that reposition windows and must route through `Stage` — otherwise cluster move/resize stays `Space`-coupled and untestable:
+
+- `MoveSurfaceGrab::update` (`grabs/move_grab.rs`) — cluster moves via `space.map_element`.
+- `ResizeSurfaceGrab::motion` (`grabs/resize_grab.rs`) → `ClusterResizeSnapshot::apply_member_shifts` (`state/cluster_snapshot.rs:79`) — repositions cluster members on resize (the snap-reflow path; `resolve_cluster_shifts` itself is already pure + tested, but `apply_member_shifts` writes to `Space`).
 
 ---
 
@@ -79,16 +82,16 @@ Plus `MoveSurfaceGrab::update` in `grabs/move_grab.rs` (cluster moves via `space
 
 ## Scope boundary (load-bearing — paste into reviews)
 
-| Stage owns                    | DriftWm keeps                                  |
-| ----------------------------- | ---------------------------------------------- |
+| Stage owns                    | DriftWm keeps                                         |
+| ----------------------------- | ----------------------------------------------------- |
 | window list, z-order          | outputs, layer surfaces (regular + canvas-positioned) |
-| focus stack, MRU, cycle state | keyboard/pointer seat                          |
-| per-window canvas (x,y,w,h)   | camera (cx, cy, zoom)                          |
-| fullscreen state              | momentum, edge-pan, animations                 |
-| fit / pre-fit-restore state   | `decorations` HashMap, render caches, shaders  |
-| add/remove events             | XWayland, foreign-toplevel                     |
+| focus stack, MRU, cycle state | keyboard/pointer seat                                 |
+| per-window canvas (x,y,w,h)   | camera (cx, cy, zoom)                                 |
+| fullscreen state              | momentum, edge-pan, animations                        |
+| fit / pre-fit-restore state   | `decorations` HashMap, render caches, shaders         |
+| add/remove events             | XWayland, foreign-toplevel                            |
 
-**Snap-cluster note:** `layout/cluster.rs` is already a derived view computed on-demand from window positions. Leave in place; switch its reads from `Space` to `Stage`. Not a state move.
+**Snap-cluster note:** `layout/cluster.rs` is already a derived view computed on-demand from window positions. Leave the cluster _computation_ in place; switch its reads from `Space` to `Stage`. The derived view is not a state move — but cluster _writes_ (drag-move and resize-reflow, which reposition members) are position mutations and route through `Stage` like any other. See the grab-driven mutations note in the entry-points section.
 
 **Camera/animation note (why this differs from niri):** niri's `Layout` owns `Clock` because animations are _part of layout_ (column slide). Driftwm's animations are _viewport_ (camera lerp, momentum, edge-pan) — they belong in `DriftWm`, not `Stage`. Drawing this line wrong is how this becomes a 4-week refactor.
 
@@ -129,7 +132,7 @@ Two impls:
 1. **This doc, reviewed and approved.** Trait shape, boundary, op list, invariant list all settled before any Rust.
 2. **Extract `Stage` + `StageElement` + `TestWindow` in one PR, unwired.** Just data structure, trait, mock, and unit tests for obvious invariants (add → focus, remove → focus follows, raise → z-order). Compiles, tests pass, nothing calls it. ~1 day.
 3. **Route the 8 mutation entry points through `Stage`, one at a time.** After each, resync `Space` from `Stage` at end-of-tick. Run the compositor between each. Eyeball: open/close windows, alt-tab, fullscreen, fit. Read-model callsites mostly stay on `Space` for this phase — convert opportunistically only when adjacent to a mutation already being touched. Do _not_ sweep.
-4. **Build the proptest harness** with `Op` variants covering the 8 entry points + a destroy variant. Call `Stage::verify_invariants()` after each op. If it finds something: fix the `Stage` bug, never lower the invariant.
+4. **Build the proptest harness** with `Op` variants covering the 8 entry points + a destroy variant + grab-driven `MoveCluster` / `ResizeCluster` variants (the reflow path — see the cluster-mutation note above). Call `Stage::verify_invariants()` after each op. If it finds something: fix the `Stage` bug, never lower the invariant.
 5. **After proptest green:** convert remaining read-model callsites from `Space` to `Stage`; demote `Space` to render mirror only. Separate PR.
 
 ---
@@ -147,6 +150,7 @@ The list to assert after every op. Start with these; add as bugs surface.
 - The focused window (if any) is in the window list.
 - A closed window appears nowhere: not in `focus_history`, `cycle_state` target, `fullscreen`, fit state, or z-order.
 - For every window in `Stage`, there is exactly one entry in the `decorations` HashMap (key parity, checked at end-of-tick).
+- After a cluster move/resize, snapped members stay non-overlapping and preserve `snap.gap` along the shared edge (the reflow invariant — exercises `apply_member_shifts` cascade convergence and the constraint-clamp seam).
 
 ---
 
