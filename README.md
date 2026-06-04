@@ -299,6 +299,8 @@ driftwm auto-detects whether it's running nested (inside an existing Wayland
 session) or on real hardware (from a TTY). Just run `driftwm`. For display
 manager integration, select "driftwm" from the session menu.
 
+
+> [!TIP]
 > When launched by a display manager, driftwm runs as a systemd user service — view logs with `journalctl --user -u driftwm.service` (add `-f` to follow). Run directly and logs go to stderr.
 
 ## Quick start
