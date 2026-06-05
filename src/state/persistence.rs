@@ -73,15 +73,10 @@ impl DriftWm {
                 continue;
             }
             let loc = self.space.element_location(window).unwrap_or_default();
+            // window.geometry().size can flicker for some Chromium-class clients
+            // (see fit.rs), causing the occasional spurious write.
             let size = window.geometry().size;
-            // Convert internal top-left, Y-down coords back to the window-rules
-            // format (center, Y-up). Inverse of the mapping in
-            // handlers/compositor.rs where rule (rx, ry) becomes
-            // (rx - w/2, -ry - h/2). Note: window.geometry().size can flicker
-            // for some Chromium-class clients (see fit.rs), causing the
-            // occasional spurious write.
-            let rx = loc.x + size.w / 2;
-            let ry = -(loc.y + size.h / 2);
+            let (rx, ry) = driftwm::canvas::internal_to_rule(loc, size);
             let is_focused = focused.as_ref() == Some(window);
             let is_widget = window.is_widget();
             window_fps.push(WindowFingerprint {

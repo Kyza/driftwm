@@ -354,12 +354,11 @@ impl CompositorHandler for DriftWm {
                         // Fullscreen / fit windows already sit at their final
                         // location — skip positioning so bar-shifted
                         // centering doesn't override that.
-                        // Rule coords are window-center, Y-up; negate Y for
-                        // internal canvas coords.
                         let pos = if let Some(ref applied) = applied
                             && let Some((x, y)) = applied.position
                         {
-                            (x - geo.size.w / 2, -y - geo.size.h / 2)
+                            let p = driftwm::canvas::rule_to_internal(x, y, geo.size);
+                            (p.x, p.y)
                         } else if let Some(parent_surface) = window.parent_surface()
                             && let Some(parent_win) = self.window_for_surface(&parent_surface)
                             && let Some(parent_loc) = self.space.element_location(&parent_win)

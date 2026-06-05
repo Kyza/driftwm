@@ -6,9 +6,8 @@ use std::path::PathBuf;
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, LoopHandle, Mode, PostAction};
 use smithay::utils::{Point, SERIAL_COUNTER};
-use smithay::wayland::seat::WaylandFocus;
 
-use crate::state::{DriftWm, FocusTarget, output_state};
+use crate::state::{DriftWm, output_state};
 use driftwm::window_ext::WindowExt;
 
 pub struct IpcServer {
@@ -217,14 +216,16 @@ fn handle_layout(args: Vec<&str>, state: &mut DriftWm) -> String {
 fn handle_state(state: &mut DriftWm) -> String {
     let mut windows = Vec::new();
     for window in state.space.elements() {
-        let bbox = window.bbox();
+        let loc = state.space.element_location(window).unwrap_or_default();
+        let size = window.geometry().size;
+        let (x, y) = driftwm::canvas::internal_to_rule(loc, size);
         let app_id = window.app_id_or_class();
         windows.push(serde_json::json!({
             "app_id": app_id.unwrap_or_else(|| "unknown".to_string()),
-            "x": bbox.loc.x,
-            "y": bbox.loc.y,
-            "width": bbox.size.w,
-            "height": bbox.size.h,
+            "x": x,
+            "y": y,
+            "width": size.w,
+            "height": size.h,
         }));
     }
 
@@ -286,14 +287,12 @@ fn handle_focus(args: Vec<&str>, state: &mut DriftWm) -> String {
         }
 
         if let Some((window, app_id)) = found {
-            state.space.raise_element(&window, true);
-            if let Some(surface) = window.wl_surface() {
-                let keyboard = state.seat.get_keyboard().unwrap();
-                keyboard.set_focus(
-                    state,
-                    Some(FocusTarget(surface.into_owned())),
-                    SERIAL_COUNTER.next_serial(),
-                );
+            // Already on screen: just raise and focus. Otherwise move the camera
+            // to it, honoring [zoom] reset_on_activation (matches xdg_shell focus).
+            if state.window_fully_in_viewport(&window) {
+                state.raise_and_focus(&window, SERIAL_COUNTER.next_serial());
+            } else {
+                state.navigate_to_window(&window, state.config.zoom_reset_on_activation);
             }
             json_response(
                 "ok",
@@ -329,14 +328,10 @@ fn handle_close(state: &mut DriftWm) -> String {
 fn handle_move(args: Vec<&str>, state: &mut DriftWm) -> String {
     if args.len() == 1 {
         if let Some(window) = state.focused_window() {
-            let bbox = window.bbox();
-            json_response(
-                "ok",
-                serde_json::json!({
-                    "x": bbox.loc.x,
-                    "y": bbox.loc.y
-                }),
-            )
+            let loc = state.space.element_location(&window).unwrap_or_default();
+            let size = window.geometry().size;
+            let (x, y) = driftwm::canvas::internal_to_rule(loc, size);
+            json_response("ok", serde_json::json!({ "x": x, "y": y }))
         } else {
             json_response("error", "no focused window")
         }
@@ -351,16 +346,10 @@ fn handle_move(args: Vec<&str>, state: &mut DriftWm) -> String {
         };
 
         if let Some(window) = state.focused_window() {
-            state
-                .space
-                .map_element(window.clone(), Point::from((x, y)), true);
-            json_response(
-                "ok",
-                serde_json::json!({
-                    "x": x,
-                    "y": y
-                }),
-            )
+            let size = window.geometry().size;
+            let loc = driftwm::canvas::rule_to_internal(x, y, size);
+            state.space.map_element(window, loc, true);
+            json_response("ok", serde_json::json!({ "x": x, "y": y }))
         } else {
             json_response("error", "no focused window to move")
         }

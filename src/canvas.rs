@@ -36,6 +36,20 @@ pub fn canvas_to_screen(canvas: CanvasPos, camera: Point<f64, Logical>, zoom: f6
     )))
 }
 
+/// Convert internal canvas coords (top-left origin, Y-down) to the user-facing
+/// window-rule convention (center, Y-up) used by config rules, the state file, and IPC.
+#[inline]
+pub fn internal_to_rule(loc: Point<i32, Logical>, size: Size<i32, Logical>) -> (i32, i32) {
+    (loc.x + size.w / 2, -(loc.y + size.h / 2))
+}
+
+/// Inverse of [`internal_to_rule`]: window-rule coords (center, Y-up) back to
+/// internal top-left, Y-down canvas coords.
+#[inline]
+pub fn rule_to_internal(x: i32, y: i32, size: Size<i32, Logical>) -> Point<i32, Logical> {
+    Point::from((x - size.w / 2, -y - size.h / 2))
+}
+
 /// Compute the camera position that centers a window at `screen_center` on screen.
 /// `screen_center` is the screen-space point where the window center should appear
 /// (typically the usable area center, accounting for panel exclusive zones).
@@ -381,6 +395,27 @@ mod tests {
     /// Screen center point for a viewport of given size (no panels).
     fn vp_center(w: i32, h: i32) -> Point<f64, Logical> {
         Point::from((w as f64 / 2.0, h as f64 / 2.0))
+    }
+
+    #[test]
+    fn rule_coords_round_trip() {
+        // internal -> rule -> internal is identity, even for odd sizes where
+        // integer halving truncates (same truncated half is used both ways).
+        for (loc, size) in [
+            ((0, 0), (100, 100)),
+            ((200, -300), (640, 480)),
+            ((-15, 7), (101, 51)),
+        ] {
+            let loc = Point::<i32, Logical>::from(loc);
+            let size = vp(size.0, size.1);
+            let (rx, ry) = internal_to_rule(loc, size);
+            assert_eq!(rule_to_internal(rx, ry, size), loc);
+        }
+    }
+
+    #[test]
+    fn rule_coords_center_y_up() {
+        assert_eq!(internal_to_rule((0, 0).into(), vp(100, 100)), (50, -50));
     }
 
     #[test]
