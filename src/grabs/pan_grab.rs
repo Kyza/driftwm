@@ -49,7 +49,7 @@ impl PointerGrab<DriftWm> for PanGrab {
             -screen_delta.x * mouse_speed / zoom,
             -screen_delta.y * mouse_speed / zoom,
         ));
-        data.drift_pan_on(camera_delta, &self.output);
+        data.drift_pan_on(camera_delta, event.time, &self.output);
         self.last_screen_pos = current_screen_pos;
 
         if !self.dragged {

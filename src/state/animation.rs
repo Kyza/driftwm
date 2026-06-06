@@ -132,14 +132,14 @@ impl DriftWm {
     /// Apply a viewport pan delta with momentum accumulation.
     /// Call this from any input path that should drift (scroll, click-drag, future gestures).
     /// Targets the active output (where the pointer is).
-    pub fn drift_pan(&mut self, delta: Point<f64, Logical>) {
-        let now = Instant::now();
+    /// `time_ms` is the libinput event timestamp (see [`canvas::VelocityTracker`]).
+    pub fn drift_pan(&mut self, delta: Point<f64, Logical>, time_ms: u32) {
         self.with_output_state(|os| {
             os.camera_target = None;
             os.zoom_target = None;
             os.zoom_animation_center = None;
             os.overview_return = None;
-            os.momentum.accumulate(delta, now);
+            os.momentum.accumulate(delta, time_ms);
             os.camera.x += delta.x;
             os.camera.y += delta.y;
         });
@@ -148,15 +148,20 @@ impl DriftWm {
     }
 
     /// Apply a viewport pan delta on a specific output (for grabs pinned to an output).
-    pub fn drift_pan_on(&mut self, delta: Point<f64, Logical>, output: &smithay::output::Output) {
-        let now = Instant::now();
+    /// `time_ms` is the libinput event timestamp (see [`canvas::VelocityTracker`]).
+    pub fn drift_pan_on(
+        &mut self,
+        delta: Point<f64, Logical>,
+        time_ms: u32,
+        output: &smithay::output::Output,
+    ) {
         {
             let mut os = super::output_state(output);
             os.camera_target = None;
             os.zoom_target = None;
             os.zoom_animation_center = None;
             os.overview_return = None;
-            os.momentum.accumulate(delta, now);
+            os.momentum.accumulate(delta, time_ms);
             os.camera.x += delta.x;
             os.camera.y += delta.y;
         }

@@ -220,9 +220,9 @@ impl DriftWm {
                 let canvas_delta: Point<f64, Logical> =
                     (-delta.x * s / zoom, -delta.y * s / zoom).into();
                 if let Some(output) = self.gesture_output.clone() {
-                    self.drift_pan_on(canvas_delta, &output);
+                    self.drift_pan_on(canvas_delta, time, &output);
                 } else {
-                    self.drift_pan(canvas_delta);
+                    self.drift_pan(canvas_delta, time);
                 }
 
                 let pointer = self.seat.get_pointer().unwrap();

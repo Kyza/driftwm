@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use smithay::utils::{Logical, Point, Rectangle, Size};
 
@@ -287,22 +287,33 @@ pub fn find_nearest<W: PartialEq>(
 /// Sliding-window velocity tracker for scroll/gesture input.
 /// Computes launch velocity from recent displacement over a fixed time window,
 /// avoiding the EMA bias where the last 1-2 events dominate.
+///
+/// Timestamps are libinput event times (ms), not processing time: under CPU
+/// load the event loop can drain a burst of events with near-identical
+/// processing times, which collapses `elapsed` and explodes the launch velocity.
 #[derive(Clone, Default)]
 pub struct VelocityTracker {
-    samples: VecDeque<(Instant, Point<f64, Logical>)>,
+    samples: VecDeque<(u32, Point<f64, Logical>)>,
 }
 
-const VELOCITY_WINDOW: Duration = Duration::from_millis(80);
+const VELOCITY_WINDOW_MS: u32 = 80;
+/// Fastest input rate we trust (Hz). Floors `elapsed` so a compressed burst of
+/// timestamps can't yield a physically impossible launch velocity.
+const MAX_INPUT_RATE_HZ: f64 = 120.0;
 
 impl VelocityTracker {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn push(&mut self, now: Instant, delta: Point<f64, Logical>) {
-        self.samples.push_back((now, delta));
-        let cutoff = now - VELOCITY_WINDOW;
-        while self.samples.front().is_some_and(|(t, _)| *t < cutoff) {
+    pub fn push(&mut self, time_ms: u32, delta: Point<f64, Logical>) {
+        self.samples.push_back((time_ms, delta));
+        // wrapping_sub keeps eviction correct across the u32 ms wrap (~49.7 days).
+        while self
+            .samples
+            .front()
+            .is_some_and(|(t, _)| time_ms.wrapping_sub(*t) > VELOCITY_WINDOW_MS)
+        {
             self.samples.pop_front();
         }
     }
@@ -314,10 +325,11 @@ impl VelocityTracker {
         }
         let first_time = self.samples.front().unwrap().0;
         let last_time = self.samples.back().unwrap().0;
-        let elapsed = (last_time - first_time).as_secs_f64();
-        if elapsed < 1e-6 {
-            return Point::from((0.0, 0.0));
-        }
+        let elapsed_ms = last_time.wrapping_sub(first_time);
+        // Floor elapsed at the fastest input rate we trust: a CPU-stalled burst
+        // of near-simultaneous timestamps can't fling faster than real input.
+        let min_elapsed = (self.samples.len() as f64 - 1.0) / MAX_INPUT_RATE_HZ;
+        let elapsed = (elapsed_ms as f64 / 1000.0).max(min_elapsed);
         let total: Point<f64, Logical> = self
             .samples
             .iter()
@@ -325,10 +337,6 @@ impl VelocityTracker {
                 Point::from((acc.x + d.x, acc.y + d.y))
             });
         Point::from((total.x / elapsed, total.y / elapsed))
-    }
-
-    pub fn last_sample_time(&self) -> Option<Instant> {
-        self.samples.back().map(|(t, _)| *t)
     }
 
     pub fn clear(&mut self) {
@@ -361,8 +369,9 @@ impl MomentumState {
     }
 
     /// Record an input delta. Resets coasting — we're receiving live input.
-    pub fn accumulate(&mut self, delta: Point<f64, Logical>, now: Instant) {
-        self.tracker.push(now, delta);
+    /// `time_ms` is the libinput event timestamp, not processing time.
+    pub fn accumulate(&mut self, delta: Point<f64, Logical>, time_ms: u32) {
+        self.tracker.push(time_ms, delta);
         self.coasting = false;
     }
 

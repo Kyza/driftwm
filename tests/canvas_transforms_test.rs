@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use driftwm::canvas::{CanvasPos, MomentumState, ScreenPos, canvas_to_screen, screen_to_canvas};
 use smithay::utils::Point;
@@ -147,8 +147,7 @@ fn momentum_tick_returns_none_when_not_coasting() {
 #[test]
 fn momentum_accumulate_prevents_tick() {
     let mut m = MomentumState::new(0.96);
-    let now = Instant::now();
-    m.accumulate(Point::from((5.0, 5.0)), now);
+    m.accumulate(Point::from((5.0, 5.0)), 1000);
     // accumulate sets coasting=false, so tick returns None
     let result = m.tick(DT_16MS);
     assert!(
@@ -160,11 +159,9 @@ fn momentum_accumulate_prevents_tick() {
 #[test]
 fn momentum_launch_enables_coasting() {
     let mut m = MomentumState::new(0.96);
-    let now = Instant::now();
     // Simulate several scroll events over 40ms
     for i in 0..4 {
-        let t = now + Duration::from_millis(i * 10);
-        m.accumulate(Point::from((5.0, 0.0)), t);
+        m.accumulate(Point::from((5.0, 0.0)), i * 10);
     }
     m.launch();
     assert!(m.coasting);
@@ -206,14 +203,13 @@ fn momentum_decays_monotonically_and_stops() {
 #[test]
 fn momentum_velocity_tracker_launch() {
     let mut m = MomentumState::new(0.96);
-    let now = Instant::now();
     // Push 5 samples at 10ms intervals, each with 10px displacement
-    for i in 0..5 {
-        let t = now + Duration::from_millis(i * 10);
-        m.accumulate(Point::from((10.0, 0.0)), t);
+    for i in 0..5u32 {
+        m.accumulate(Point::from((10.0, 0.0)), i * 10);
     }
     m.launch();
-    // 5 samples over 40ms, total displacement = 50px → velocity ≈ 1250 px/sec
+    // 5 samples over 40ms, total displacement = 50px → velocity ≈ 1250 px/sec.
+    // 120Hz floor = (5-1)/120 ≈ 0.0333s; real elapsed = 0.040s > floor, so no clamping.
     assert!(
         (m.velocity.x - 1250.0).abs() < 50.0,
         "expected ~1250 px/sec, got {}",
@@ -280,5 +276,28 @@ fn momentum_frame_rate_independence() {
     assert!(
         (ratio - 1.0).abs() < 0.05,
         "60Hz total ({total_60:.1}) vs 144Hz total ({total_144:.1}) should be within 5%, ratio={ratio:.3}"
+    );
+}
+
+#[test]
+fn momentum_compressed_burst_velocity_is_bounded() {
+    // Regression: before the 120Hz elapsed floor, draining a burst of input events
+    // with near-identical processing timestamps collapsed elapsed → 0 and launched
+    // the canvas at hundreds-of-thousands px/sec. This test pushes 30 samples all
+    // stamped at the same millisecond (worst case) and asserts the resulting velocity
+    // is physically bounded by the floor: 150px total / ((30-1)/120 s) ≈ 620 px/sec.
+    let mut m = MomentumState::new(0.96);
+    for _ in 0..30 {
+        m.accumulate(Point::from((5.0, 0.0)), 1000);
+    }
+    m.launch();
+    assert!(
+        m.velocity.x > 0.0,
+        "velocity should be positive after burst"
+    );
+    assert!(
+        m.velocity.x < 5000.0,
+        "compressed burst must not produce explosive velocity; got {} px/sec",
+        m.velocity.x
     );
 }

@@ -583,7 +583,7 @@ impl DriftWm {
                         let s = self.config.trackpad_speed;
                         let canvas_delta: Point<f64, smithay::utils::Logical> =
                             Point::from((h * s / self.zoom(), v * s / self.zoom()));
-                        self.drift_pan(canvas_delta);
+                        self.drift_pan(canvas_delta, Event::time_msec(&event));
                         let new_pos = pos + canvas_delta;
                         let serial = SERIAL_COUNTER.next_serial();
                         let under = self.surface_under(new_pos, None);
