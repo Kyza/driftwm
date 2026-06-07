@@ -362,8 +362,16 @@ impl CompositorHandler for DriftWm {
                         let (rx, ry) = applied.as_ref().and_then(|a| a.position).unwrap_or((0, 0));
                         let out_size = crate::state::output_logical_size(&output);
                         let internal = driftwm::canvas::rule_to_internal(rx, ry, geo.size);
-                        let screen_pos: Point<i32, Logical> =
-                            (out_size.w / 2 + internal.x, out_size.h / 2 + internal.y).into();
+                        // Clamp the top-left into the output so an off-screen rule
+                        // `position` (e.g. [1000, 1000] on a 1080p monitor) still
+                        // lands fully visible. Mirrors `reassign_orphaned_pinned`.
+                        let screen_pos: Point<i32, Logical> = (
+                            (out_size.w / 2 + internal.x)
+                                .clamp(0, (out_size.w - geo.size.w).max(0)),
+                            (out_size.h / 2 + internal.y)
+                                .clamp(0, (out_size.h - geo.size.h).max(0)),
+                        )
+                            .into();
                         // Seed the Space loc to the canvas point this screen
                         // position currently maps to; the per-frame loc-sync
                         // keeps it correct as the camera moves.

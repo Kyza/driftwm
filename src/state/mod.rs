@@ -170,6 +170,10 @@ pub struct FullscreenState {
     pub saved_camera: Point<f64, Logical>,
     pub saved_zoom: f64,
     pub saved_size: Size<i32, Logical>,
+    /// If the window was screen-pinned when it entered fullscreen, its pin
+    /// state, re-inserted on exit so fullscreen is a transparent round-trip
+    /// (pinned → fullscreen → pinned) rather than a permanent unpin.
+    pub saved_pinned: Option<PinnedState>,
 }
 
 pub struct PendingRecenter {

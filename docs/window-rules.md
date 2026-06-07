@@ -112,7 +112,9 @@ floating overlay.
   `Mod`-drag) to move, drag a border to resize. Dragging across monitors
   reassigns it to that output. Combine with `widget = true` to make it
   **immovable**.
-- **No fullscreen.** Fullscreen requests on a pinned window are refused.
+- **Fullscreen round-trips.** A fullscreen request (or `Mod+F`) temporarily
+  unpins the window to fill the screen; exiting fullscreen re-pins it in place.
+  Any canvas pan/zoom exits fullscreen, just like a normal window.
 - **Off the canvas.** Pinned windows are excluded from navigation, alt-tab,
   snapping, fit/center actions, and canvas screenshots (`driftwm msg
   screenshot`). They remain focusable and closable; SSD windows show a small dot

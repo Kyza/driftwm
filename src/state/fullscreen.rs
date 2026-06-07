@@ -1,5 +1,6 @@
 use smithay::{
     desktop::Window,
+    reexports::wayland_server::Resource,
     utils::{Logical, Point},
     wayland::seat::WaylandFocus,
 };
@@ -10,13 +11,14 @@ use driftwm::window_ext::WindowExt;
 impl DriftWm {
     /// Enter fullscreen for the given window: lock viewport, expand window to fill screen.
     pub fn enter_fullscreen(&mut self, window: &Window) {
-        // Decision: pinned windows never fullscreen (see also fullscreen_request).
-        if self.is_pinned(window)
-            || window
-                .wl_surface()
-                .as_ref()
-                .and_then(|s| driftwm::config::applied_rule(s))
-                .is_some_and(|r| r.widget)
+        // Widgets (immovable canvas layers) never fullscreen. Pinned windows
+        // do: they temporarily unpin into a normal fullscreen and re-pin on
+        // exit (saved_pinned), so a PiP video can fill the screen and snap back.
+        if window
+            .wl_surface()
+            .as_ref()
+            .and_then(|s| driftwm::config::applied_rule(s))
+            .is_some_and(|r| r.widget)
         {
             return;
         }
@@ -59,6 +61,11 @@ impl DriftWm {
                 .unwrap_or_else(|| window.geometry().size)
         };
 
+        // Unpin into the fullscreen viewport; exit_fullscreen_on re-pins.
+        let saved_pinned = window
+            .wl_surface()
+            .and_then(|s| self.pinned.remove(&s.id()));
+
         self.fullscreen.insert(
             output,
             FullscreenState {
@@ -67,6 +74,7 @@ impl DriftWm {
                 saved_camera: self.camera(),
                 saved_zoom: self.zoom(),
                 saved_size,
+                saved_pinned,
             },
         );
 
@@ -155,13 +163,25 @@ impl DriftWm {
         fs.window.exit_fullscreen_configure(fs.saved_size);
 
         // Restore window position, camera, zoom on the specific output
-        self.space.map_element(fs.window, fs.saved_location, false);
+        self.space
+            .map_element(fs.window.clone(), fs.saved_location, false);
         {
             let mut os = super::output_state(output);
             os.camera = fs.saved_camera;
             os.zoom = fs.saved_zoom;
         }
+        // Re-pin if it was pinned before fullscreen, then snap its Space loc
+        // back to screen_pos (update_output_from_camera's sync only fires on a
+        // camera change, which restoring the saved camera may not be).
+        let was_pinned = fs.saved_pinned.is_some();
+        if let (Some(pinned), Some(id)) = (fs.saved_pinned, fs.window.wl_surface().map(|s| s.id()))
+        {
+            self.pinned.insert(id, pinned);
+        }
         self.update_output_from_camera();
+        if was_pinned {
+            self.sync_pinned_locs();
+        }
     }
 
     /// Re-configure the fullscreen window (if any) on this output to the new

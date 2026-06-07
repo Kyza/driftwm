@@ -148,14 +148,6 @@ impl XdgShellHandler for DriftWm {
         _output: Option<wl_output::WlOutput>,
     ) {
         let wl_surface = surface.wl_surface().clone();
-        // Pinned windows never fullscreen (decision). Refuse the already-pinned
-        // case early; the deferred path below is also covered because its drain
-        // calls the guarded `enter_fullscreen`.
-        if self.pinned.contains_key(&wl_surface.id())
-            || driftwm::config::applied_rule(&wl_surface).is_some_and(|r| r.pinned_to_screen)
-        {
-            return;
-        }
         // Defer until the first sized commit — geometry is still (0,0)
         // here, which would poison `saved_size`, and the initial-commit
         // positioning block would clobber the fullscreen map.

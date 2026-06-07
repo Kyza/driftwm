@@ -250,15 +250,25 @@ impl DriftWm {
         {
             return;
         }
-        let window = self.space.element_under(canvas_pos).map(|(w, _)| w.clone());
+        // Pinned windows render above the canvas and hit-test in screen space,
+        // so they take focus priority — mirror the pointer-focus ordering
+        // (pinned_window_under sits above the canvas in pointer_focus_under).
+        let screen_pos = driftwm::canvas::canvas_to_screen(
+            driftwm::canvas::CanvasPos(canvas_pos),
+            self.camera(),
+            self.zoom(),
+        )
+        .0;
+        let window = match self.pinned_window_under(screen_pos, canvas_pos) {
+            Some((focus, _)) => self.window_for_surface(&focus.0),
+            None => self.space.element_under(canvas_pos).map(|(w, _)| w.clone()),
+        };
         let Some(window) = window else { return };
-        // Pinned windows are screen-space; the canvas element_under hit is
-        // unreliable for them (handled by pinned_window_under instead).
         let is_widget = window
             .wl_surface()
             .and_then(|s| driftwm::config::applied_rule(&s))
             .is_some_and(|r| r.widget);
-        if is_widget || self.is_pinned(&window) {
+        if is_widget {
             return;
         }
 
