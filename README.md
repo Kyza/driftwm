@@ -1,3 +1,5 @@
+
+
 <h1 align="center"><img alt="driftwm" src="assets/logo.jpg" width="500"></h1>
 <p align="center">A trackpad-first infinite canvas Wayland compositor.</p>
 <p align="center">
@@ -101,6 +103,8 @@ action (launching an app, navigating) naturally exits it.
 
 https://github.com/user-attachments/assets/6e9eb7f7-0c73-4fdd-b7aa-230b8ff0a172
 
+https://github.com/user-attachments/assets/fb1cd5a1-242c-45d7-b302-952a15aaa24d
+
 The background is part of the canvas — it scrolls and zooms with the viewport,
 not stuck to the screen. This gives spatial awareness when panning.
 
@@ -119,7 +123,11 @@ type = "shader"
 path = "~/.config/driftwm/bg.glsl"
 # texture = "~/Pictures/img.jpg"  # if it's a texture-based shader
 
-# Or: type = "tile",      path = "~/Pictures/tile.png"
+# Or: type = "tile",      path = "~/Pictures/ti
+
+https://github.com/user-attachments/assets/6478bf2f-3140-48a4-9c3e-26024973745e
+
+le.png"
 # Or: type = "tile",      path = "~/Pictures/world.tif"   # pyramidal TIFF
 # Or: type = "wallpaper", path = "~/Pictures/wallpaper.jpg"
 ```
