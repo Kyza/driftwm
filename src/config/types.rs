@@ -720,6 +720,7 @@ pub fn effective_decoration_mode<'a>(
 pub struct BackendConfig {
     pub wait_for_frame_completion: bool,
     pub disable_direct_scanout: bool,
+    pub disable_hardware_cursor: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

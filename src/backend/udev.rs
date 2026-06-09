@@ -302,9 +302,10 @@ pub fn init_udev(
     let seat_name = session.seat();
     tracing::info!("Session created on seat: {seat_name}");
     tracing::info!(
-        "Backend config: wait_for_frame_completion={}, disable_direct_scanout={}",
+        "Backend config: wait_for_frame_completion={}, disable_direct_scanout={}, disable_hardware_cursor={}",
         data.config.backend.wait_for_frame_completion,
         data.config.backend.disable_direct_scanout,
+        data.config.backend.disable_hardware_cursor,
     );
 
     // 2. Enumerate GPUs — UdevBackend gives us all DRM devices (also used for hotplug later)
@@ -1423,22 +1424,22 @@ fn render_frame(
     let renderer = backend.renderer();
     let elements = crate::render::compose_frame(data, renderer, output, cursor_elements);
 
-    // Primary plane scanout (any format) + cursor plane. Overlay planes left off —
-    // they cause hard-to-diagnose flicker on some hardware.
+    // Overlay planes are left off — they cause hard-to-diagnose flicker on some
+    // hardware. disable_hardware_cursor composites the cursor into the frame instead
+    // of using the KMS cursor plane: a workaround for NVIDIA, where a system-memory
+    // cursor buffer can't be scanned out (stutter/tearing), while keeping direct
+    // scanout for fullscreen apps.
     //
-    // Skip cursor plane scanout when the cursor is dimmed: smithay's cursor plane
-    // cache is keyed by element id + commit and ignores alpha, so a 1.0 → <1.0
-    // change reuses the previously-drawn opaque buffer. Falling back to GPU
-    // compositing reapplies alpha every frame.
-    let frame_flags = if data.config.backend.disable_direct_scanout {
-        FrameFlags::empty()
-    } else {
-        let mut f = FrameFlags::ALLOW_PRIMARY_PLANE_SCANOUT_ANY;
-        if cursor_alpha >= 1.0 {
-            f |= FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT;
-        }
-        f
-    };
+    // Also skip cursor plane scanout when the cursor is dimmed: smithay's cursor plane
+    // cache is keyed by element id + commit and ignores alpha, so a 1.0 → <1.0 change
+    // reuses the previously-drawn opaque buffer. GPU compositing reapplies alpha.
+    let mut frame_flags = FrameFlags::empty();
+    if !data.config.backend.disable_direct_scanout {
+        frame_flags |= FrameFlags::ALLOW_PRIMARY_PLANE_SCANOUT_ANY;
+    }
+    if cursor_alpha >= 1.0 && !data.config.backend.disable_hardware_cursor {
+        frame_flags |= FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT;
+    }
 
     // Render via DRM compositor (latency-sensitive — do first)
     let renderer = backend.renderer();

@@ -183,6 +183,10 @@
                                      # needs_sync — typical case on NVIDIA. Set true
                                      # only if you still see flicker after defaults.)
 # disable_direct_scanout = false     # Force EGL composition (disable direct scanout)
+# disable_hardware_cursor = false    # Composite the cursor into the frame instead of
+                                     # using the KMS cursor plane, while keeping direct
+                                     # scanout for fullscreen apps. Fixes a stuttering /
+                                     # tearing hardware cursor on discrete NVIDIA GPUs.
 
 [output]
 # Global output settings. Per-output scale/transform/mode/position
