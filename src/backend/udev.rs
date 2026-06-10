@@ -1180,7 +1180,7 @@ fn create_surface(
         -(logical_size.h as f64) / 2.0,
     ));
 
-    init_output_state(&output, camera, state.config.friction, layout_position);
+    init_output_state(&output, camera, state.config.drift, layout_position);
 
     // Restore per-output camera/zoom from state file if available
     if let Some(&(saved_cam, saved_zoom)) = saved_output_state.get(&connector_name) {

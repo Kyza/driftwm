@@ -349,23 +349,23 @@ impl VelocityTracker {
 /// Stop threshold in px/sec (15 px/sec ≈ 0.25 px/frame at 60Hz)
 const MOMENTUM_STOP_THRESHOLD: f64 = 15.0;
 
-/// Scroll momentum physics with time-based friction.
-/// Velocity is in px/sec; friction is applied via `powf(dt * 60)` for
+/// Scroll momentum physics with time-based drift.
+/// Velocity is in px/sec; drift is applied via `powf(dt * 60)` for
 /// frame-rate independence.
 #[derive(Clone)]
 pub struct MomentumState {
     pub velocity: Point<f64, Logical>,
     pub tracker: VelocityTracker,
-    pub friction: f64,
+    pub drift: f64,
     pub coasting: bool,
 }
 
 impl MomentumState {
-    pub fn new(friction: f64) -> Self {
+    pub fn new(drift: f64) -> Self {
         Self {
             velocity: Point::from((0.0, 0.0)),
             tracker: VelocityTracker::new(),
-            friction,
+            drift,
             coasting: false,
         }
     }
@@ -398,9 +398,9 @@ impl MomentumState {
 
         let dt_secs = dt.as_secs_f64();
 
-        // Speed-dependent friction: gentle scrolls stop quickly, fast flings coast longer
-        let effective_friction = speed_dependent_friction(self.friction, speed);
-        let decay = effective_friction.powf(dt_secs * 60.0);
+        // Speed-dependent drift: gentle scrolls stop quickly, fast flings coast longer
+        let effective_drift = speed_dependent_drift(self.drift, speed);
+        let decay = effective_drift.powf(dt_secs * 60.0);
         let delta = Point::from((self.velocity.x * dt_secs, self.velocity.y * dt_secs));
         self.velocity = Point::from((self.velocity.x * decay, self.velocity.y * decay));
         Some(delta)
@@ -413,14 +413,30 @@ impl MomentumState {
     }
 }
 
-/// Derive effective per-frame friction from the config value and current speed.
-/// Low speeds get more friction (quick stop), high speeds get less (long coast).
-fn speed_dependent_friction(friction: f64, speed: f64) -> f64 {
-    let low_friction = (friction - 0.06).clamp(0.80, 0.95);
-    let high_friction = (friction + 0.025).clamp(0.95, 0.995);
-    let reference_speed = 2500.0; // px/sec
+/// Per-frame velocity retention for momentum coasting, from the user's `drift`
+/// knob (0 = off … 1 = floatiest) and the current `speed`.
+///
+/// The knob is log-spaced in coast time: each step multiplies how long a fling
+/// coasts by a roughly constant factor, so the slider feels perceptually even
+/// instead of cramming every usable value into 0.9–1.0. Gentle scrolls (low
+/// speed) stop sooner than hard flings (high speed). The result is normalized to
+/// 60fps; `tick` applies `powf(dt * 60)` for frame-rate independence.
+fn speed_dependent_drift(drift: f64, speed: f64) -> f64 {
+    if drift <= 0.0 {
+        return 0.0; // momentum disabled
+    }
+    // Fling coast time as a velocity half-life (seconds), spaced geometrically
+    // across the knob. Endpoints and the default (0.5) are tuned so 0.5
+    // reproduces the original feel (≈0.88 slow / ≈0.965 fast retention).
+    const FLING_HALFLIFE_MIN: f64 = 0.05;
+    const FLING_HALFLIFE_MAX: f64 = 2.3;
+    const SLOW_COAST_RATIO: f64 = 0.28; // gentle scrolls coast ~1/3.6 as long
+    let fling = FLING_HALFLIFE_MIN * (FLING_HALFLIFE_MAX / FLING_HALFLIFE_MIN).powf(drift.min(1.0));
+    let reference_speed = 2500.0; // px/sec; at or above this, full fling coast
     let t = (speed / reference_speed).min(1.0);
-    low_friction + t * (high_friction - low_friction)
+    let half_life = fling * SLOW_COAST_RATIO.powf(1.0 - t);
+    // Retention that halves the velocity every `half_life` seconds.
+    0.5_f64.powf(1.0 / (60.0 * half_life)).min(0.995)
 }
 
 #[cfg(test)]

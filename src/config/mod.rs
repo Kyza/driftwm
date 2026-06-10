@@ -44,8 +44,8 @@ pub struct Config {
     pub trackpad_speed: f64,
     /// Multiplier for mouse drag pan (Mod+LMB or LMB on canvas). 1.0 = direct.
     pub mouse_speed: f64,
-    /// Scroll momentum decay factor per frame. 0.92 = snappy, 0.96 = floaty.
-    pub friction: f64,
+    /// Scroll momentum on a 0–1 scale: 0 = off, 0.5 = default, 1 = floatiest.
+    pub drift: f64,
     /// Pixels per keyboard nudge (Mod+Shift+Arrow).
     pub nudge_step: i32,
     /// Pixels per keyboard pan (Mod+Ctrl+Arrow).
@@ -501,7 +501,12 @@ impl Config {
 
         let trackpad_speed = raw.navigation.trackpad_speed.unwrap_or(1.5);
         let mouse_speed = raw.navigation.mouse_speed.unwrap_or(1.0);
-        let friction = raw.navigation.friction.unwrap_or(0.94);
+        let drift = raw.navigation.drift.unwrap_or(0.5);
+        if raw.navigation.friction.is_some() {
+            warn_and_collect!(
+                "config: [navigation] friction was renamed to drift — use 0 (off) to 1 (floatiest), default 0.5"
+            );
+        }
 
         let mut child_env: HashMap<String, String> = TOOLKIT_DEFAULTS
             .iter()
@@ -522,7 +527,7 @@ impl Config {
             focus_follows_mouse: raw.focus_follows_mouse.unwrap_or(false),
             trackpad_speed,
             mouse_speed,
-            friction,
+            drift,
             nudge_step: raw.navigation.nudge_step.unwrap_or(20),
             pan_step: raw.navigation.pan_step.unwrap_or(100.0),
             repeat_delay: raw.input.keyboard.repeat_delay.unwrap_or(200),

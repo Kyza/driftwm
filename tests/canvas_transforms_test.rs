@@ -219,6 +219,54 @@ fn momentum_velocity_tracker_launch() {
 }
 
 #[test]
+fn momentum_drift_zero_disables_coasting() {
+    let mut m = MomentumState::new(0.0);
+    m.velocity = Point::from((1200.0, 0.0));
+    m.coasting = true;
+    // With drift = 0 the velocity decays to nothing within a frame or two,
+    // so the fling stops almost immediately instead of coasting.
+    let mut frames = 0;
+    for _ in 0..10 {
+        if m.tick(DT_16MS).is_none() {
+            break;
+        }
+        frames += 1;
+    }
+    assert!(!m.coasting, "drift = 0 should stop coasting");
+    assert!(
+        frames <= 3,
+        "drift = 0 should stop within a few frames, coasted {frames}"
+    );
+}
+
+#[test]
+fn momentum_higher_drift_coasts_farther() {
+    // The drift knob is monotonic: a larger value coasts a fling farther.
+    let coast = |drift: f64| {
+        let mut m = MomentumState::new(drift);
+        m.velocity = Point::from((2000.0, 0.0));
+        m.coasting = true;
+        let mut total = 0.0;
+        for _ in 0..2000 {
+            match m.tick(DT_16MS) {
+                Some(d) => total += d.x,
+                None => break,
+            }
+        }
+        total
+    };
+    let (low, mid, high) = (coast(0.2), coast(0.5), coast(0.9));
+    assert!(
+        low < mid,
+        "drift 0.2 should coast less than 0.5: {low} vs {mid}"
+    );
+    assert!(
+        mid < high,
+        "drift 0.5 should coast less than 0.9: {mid} vs {high}"
+    );
+}
+
+#[test]
 fn momentum_stop_zeroes_velocity() {
     let mut m = MomentumState::new(0.96);
     m.velocity = Point::from((500.0, 500.0));

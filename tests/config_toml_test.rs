@@ -204,16 +204,44 @@ fn toml_scalar_overrides() {
         [navigation]
         trackpad_speed = 2.5
         nudge_step = 50
-        friction = 0.92
+        drift = 0.92
 
         [zoom]
         step = 1.2
     "#;
     let config = Config::from_toml(toml).unwrap();
     assert!((config.trackpad_speed - 2.5).abs() < f64::EPSILON);
-    assert!((config.friction - 0.92).abs() < f64::EPSILON);
+    assert!((config.drift - 0.92).abs() < f64::EPSILON);
     assert_eq!(config.nudge_step, 50);
     assert!((config.zoom_step - 1.2).abs() < f64::EPSILON);
+}
+
+#[test]
+fn toml_navigation_friction_is_migration_error_not_fatal() {
+    // `friction` was renamed to `drift`, but deny_unknown_fields would otherwise
+    // make a stale value fail the whole parse — it must degrade to a migration
+    // message instead.
+    let toml = r#"
+        [navigation]
+        friction = 0.94
+        nudge_step = 42
+    "#;
+    let (config, warnings) =
+        Config::from_toml_collect(toml).expect("friction should not fail the parse");
+    assert_eq!(
+        config.nudge_step, 42,
+        "rest of the config should still apply"
+    );
+    assert!(
+        (config.drift - 0.5).abs() < f64::EPSILON,
+        "drift falls back to default"
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("friction") && w.contains("drift")),
+        "expected a friction→drift migration message, got {warnings:?}"
+    );
 }
 
 #[test]

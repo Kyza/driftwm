@@ -244,7 +244,7 @@ pub struct OutputState {
 pub fn init_output_state(
     output: &Output,
     camera: Point<f64, Logical>,
-    friction: f64,
+    drift: f64,
     layout_position: Point<i32, Logical>,
 ) {
     if output.user_data().get::<Mutex<OutputState>>().is_some() {
@@ -261,7 +261,7 @@ pub fn init_output_state(
             overview_return: None,
             camera_target: None,
             last_scroll_pan: None,
-            momentum: MomentumState::new(friction),
+            momentum: MomentumState::new(drift),
             panning: false,
             edge_pan_velocity: None,
             last_rendered_camera: Point::from((f64::NAN, f64::NAN)),

@@ -81,7 +81,7 @@ pub fn init_winit(
     init_output_state(
         &output,
         initial_camera,
-        data.config.friction,
+        data.config.drift,
         Point::from((0, 0)),
     );
     data.focused_output = Some(output.clone());

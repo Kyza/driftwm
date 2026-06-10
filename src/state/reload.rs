@@ -70,9 +70,9 @@ impl DriftWm {
             keyboard.change_repeat_info(new_config.repeat_rate, new_config.repeat_delay);
         }
 
-        if new_config.friction != self.config.friction {
+        if new_config.drift != self.config.drift {
             for output in self.space.outputs() {
-                output_state(output).momentum.friction = new_config.friction;
+                output_state(output).momentum.drift = new_config.drift;
             }
         }
 

@@ -82,7 +82,7 @@
 [navigation]
 # trackpad_speed = 1.5        # trackpad (scroll/gestures) pan multiplier
 # mouse_speed = 1.0           # mouse (drag) pan multiplier (1.0 = direct)
-# friction = 0.94             # momentum decay (0.90=snappy, 0.98=floaty)
+# drift = 0.5                 # momentum coast: 0 = off, 0.5 = default, 1 = floatiest
 # animation_speed = 0.3       # camera lerp factor (higher = faster)
 # auto_navigate_on_close = true  # on close, pan to the newly focused window if off-screen
 #                             # false = camera stays put; focus only moves to a visible window
