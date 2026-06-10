@@ -167,37 +167,6 @@
                                  # (expensive; default: false — blur is captured once and
                                  # only refreshed when geometry/camera/static bg change)
 
-[backend]
-# Hardware stability quirks. All default to false (opt-in).
-# Enable these if you experience flickering, crashes, or rendering issues.
-# Particularly useful on NVIDIA GPUs with proprietary drivers.
-# Note: These flags must be set before launching driftwm. Changing them requires a restart.
-# For additional NVIDIA-specific settings, set these environment variables in your
-# session wrapper script or shell profile before starting driftwm:
-#   export SMITHAY_USE_LEGACY=1          # Use legacy DRM API instead of atomic modesetting
-#   export __GL_GSYNC_ALLOWED=0
-#   export __GL_VRR_ALLOWED=0
-#   export __GL_MaxFramesAllowed=1
-#   export NVD_BACKEND=direct
-# wait_for_frame_completion = false  # Force GPU-fence wait before every page flip
-                                     # (already done automatically when smithay reports
-                                     # needs_sync — typical case on NVIDIA. Set true
-                                     # only if you still see flicker after defaults.)
-# disable_direct_scanout = false     # Force EGL composition (disable direct scanout)
-# disable_hardware_cursor = false    # Composite the cursor into the frame instead of
-                                     # using the KMS cursor plane, while keeping direct
-                                     # scanout for fullscreen apps. Fixes a stuttering /
-                                     # tearing hardware cursor on discrete NVIDIA GPUs.
-
-[output]
-# Global output settings. Per-output scale/transform/mode/position
-# are configured in [[outputs]] sections below.
-
-[output.outline]
-# color = "#ffffff"           # outline color for other monitors' viewports
-# thickness = 1               # pixels (0 to disable)
-# opacity = 0.5               # 0.0–1.0
-
 [background]
 # Three background types: "shader", "tile", "wallpaper". `path` is the source.
 # type = "shader"
@@ -424,9 +393,36 @@
 # binary isn't found, X11 support is disabled with a warning; everything
 # else still runs.
 #
-# [xwayland]
+[xwayland]
 # enabled = true                  # default: true
 # path    = "xwayland-satellite"  # path to xwayland-satellite binary ($PATH lookup works)
+
+[backend]
+# Hardware stability quirks. All default to false (opt-in).
+# Enable these if you experience flickering, crashes, or rendering issues.
+# Particularly useful on NVIDIA GPUs with proprietary drivers.
+# Note: These flags must be set before launching driftwm. Changing them requires a restart.
+# For additional NVIDIA-specific settings, set these environment variables in your
+# session wrapper script or shell profile before starting driftwm:
+#   export SMITHAY_USE_LEGACY=1          # Use legacy DRM API instead of atomic modesetting
+#   export __GL_GSYNC_ALLOWED=0
+#   export __GL_VRR_ALLOWED=0
+#   export __GL_MaxFramesAllowed=1
+#   export NVD_BACKEND=direct
+# wait_for_frame_completion = false  # Force GPU-fence wait before every page flip
+                                     # (already done automatically when smithay reports
+                                     # needs_sync — typical case on NVIDIA. Set true
+                                     # only if you still see flicker after defaults.)
+# disable_direct_scanout = false     # Force EGL composition (disable direct scanout)
+# disable_hardware_cursor = false    # Composite the cursor into the frame instead of
+                                     # using the KMS cursor plane, while keeping direct
+                                     # scanout for fullscreen apps. Fixes a stuttering /
+                                     # tearing hardware cursor on discrete NVIDIA GPUs.
+
+[output.outline]
+# color = "#ffffff"           # outline color for other monitors' viewports
+# thickness = 1               # pixels (0 to disable)
+# opacity = 0.5               # 0.0–1.0
 
 # Per-output configuration. Each [[outputs]] entry matches by connector name.
 # Find connector names with wlr-randr or check driftwm logs at startup.
