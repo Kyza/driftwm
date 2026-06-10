@@ -50,6 +50,7 @@
 
 [input.keyboard]
 # layout = "us"              # XKB layout (e.g., "us,ru" for multi-layout)
+# remember_layout_per_window = false  # for multi-layout setups
 # variant = ""               # XKB variant (e.g., "dvorak", or "," for two defaults)
 # options = ""               # XKB options (e.g., "grp:win_space_toggle" for Super+Space layout switch)
 # model = ""                 # XKB model (e.g., "pc105")

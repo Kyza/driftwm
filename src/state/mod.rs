@@ -720,7 +720,66 @@ impl DriftWm {
         serial: smithay::utils::Serial,
     ) {
         let keyboard = self.seat.get_keyboard().unwrap();
+
+        if self.config.remember_layout_per_window {
+            let old = keyboard.current_focus();
+            let focus_changing = old.as_ref().map(|f| &f.0) != target.as_ref().map(|f| &f.0);
+            if focus_changing {
+                self.remember_window_layout(&keyboard, old.as_ref(), target.as_ref());
+            }
+        }
+
         keyboard.set_focus(self, target, serial);
+    }
+
+    /// Save the active layout on the outgoing window, restore the incoming one's.
+    /// Unfocuses before swapping so the outgoing client never sees the layout change.
+    fn remember_window_layout(
+        &mut self,
+        keyboard: &smithay::input::keyboard::KeyboardHandle<Self>,
+        old: Option<&FocusTarget>,
+        new: Option<&FocusTarget>,
+    ) {
+        use smithay::input::keyboard::Layout;
+        use smithay::utils::IsAlive;
+        use smithay::wayland::compositor::with_states;
+        use std::cell::Cell;
+
+        let current =
+            keyboard.with_xkb_state(self, |ctx| ctx.xkb().lock().unwrap().active_layout());
+
+        if let Some(old) = old
+            && old.0.alive()
+        {
+            with_states(&old.0, |states| {
+                states
+                    .data_map
+                    .get_or_insert::<Cell<Layout>, _>(Cell::default)
+                    .set(current)
+            });
+        }
+
+        let Some(new) = new else { return };
+        let saved = with_states(&new.0, |states| {
+            states
+                .data_map
+                .get_or_insert::<Cell<Layout>, _>(Cell::default)
+                .get()
+        });
+
+        let layout_count =
+            keyboard.with_xkb_state(self, |ctx| ctx.xkb().lock().unwrap().layouts().count());
+        if saved == current || saved.0 as usize >= layout_count {
+            return;
+        }
+
+        keyboard.set_focus(self, None, smithay::utils::SERIAL_COUNTER.next_serial());
+        let name = keyboard.with_xkb_state(self, |mut ctx| {
+            ctx.set_layout(saved);
+            let xkb = ctx.xkb().lock().unwrap();
+            xkb.layout_name(xkb.active_layout()).to_owned()
+        });
+        self.active_layout = name;
     }
 
     pub fn mark_all_dirty(&mut self) {

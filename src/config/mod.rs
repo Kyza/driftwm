@@ -93,6 +93,8 @@ pub struct Config {
     pub gesture_thresholds: GestureThresholds,
     pub layout_independent: bool,
     pub keyboard_layout: KeyboardLayout,
+    /// Restore each window's last-used keyboard layout when it regains focus.
+    pub remember_layout_per_window: bool,
     pub autostart: Vec<String>,
     pub cursor_theme: Option<String>,
     pub cursor_size: Option<u32>,
@@ -571,6 +573,11 @@ impl Config {
             gesture_thresholds,
             layout_independent: raw.input.keyboard.layout_independent.unwrap_or(true),
             keyboard_layout,
+            remember_layout_per_window: raw
+                .input
+                .keyboard
+                .remember_layout_per_window
+                .unwrap_or(false),
             cursor_theme: raw.cursor.theme,
             cursor_size: raw.cursor.size,
             inactive_cursor_opacity: raw.cursor.inactive_opacity.unwrap_or(0.5).clamp(0.0, 1.0),
@@ -824,5 +831,21 @@ mod tests {
     fn no_outputs_section_produces_empty_vec() {
         let config = Config::from_toml("").unwrap();
         assert!(config.output_configs.is_empty());
+    }
+
+    #[test]
+    fn remember_layout_per_window_parses_from_toml() {
+        let toml_str = r#"
+            [input.keyboard]
+            remember_layout_per_window = true
+        "#;
+        let config = Config::from_toml(toml_str).unwrap();
+        assert!(config.remember_layout_per_window);
+    }
+
+    #[test]
+    fn remember_layout_per_window_omitted_in_toml_defaults_false() {
+        let config = Config::from_toml("").unwrap();
+        assert!(!config.remember_layout_per_window);
     }
 }
