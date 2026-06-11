@@ -402,6 +402,29 @@ fn toml_background_shader_with_texture() {
 }
 
 #[test]
+fn toml_background_transparent_shader_parses() {
+    let toml = r#"
+        [background]
+        type = "shader"
+        path = "~/shaders/my.glsl"
+        transparent_shader = true
+    "#;
+    let config = Config::from_toml(toml).unwrap();
+    assert!(config.background.transparent_shader);
+}
+
+#[test]
+fn toml_background_transparent_shader_defaults_false() {
+    let toml = r#"
+        [background]
+        type = "shader"
+        path = "~/shaders/my.glsl"
+    "#;
+    let config = Config::from_toml(toml).unwrap();
+    assert!(!config.background.transparent_shader);
+}
+
+#[test]
 fn toml_background_new_form_tile() {
     let toml = r#"
         [background]

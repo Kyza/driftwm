@@ -46,6 +46,10 @@ Set `gl_FragColor` to an RGBA `vec4`:
 gl_FragColor = vec4(color, 1.0);
 ```
 
+The alpha component (the `1.0` above) is ignored by default — backgrounds are
+composited opaque. To make a shader output its own transparency, set
+`transparent_shader = true` (see [Transparent backgrounds](#transparent-backgrounds)).
+
 ## Examples
 
 ### Solid color (cheapest)
@@ -141,8 +145,9 @@ Notes that differ from procedural shaders:
   `u_output_size` instead (same value: viewport pixels).
 - **No `textureSize()`** — GLSL ES 1.0 lacks it, so the image's resolution
   arrives as `u_texture_size`. You need it to turn canvas pixels into texel UVs.
-- **`alpha` is optional** — backgrounds are always opaque, so you don't need to
-  declare or multiply by an `alpha` uniform.
+- **`alpha` is optional** — backgrounds are opaque by default, so you don't need
+  to declare or multiply by an `alpha` uniform unless you set
+  `transparent_shader = true` (see [Transparent backgrounds](#transparent-backgrounds)).
 - **`cache_shader` is ignored** — the shader-bake cache can't sample a runtime
   texture, so textured shaders always render live.
 
@@ -201,6 +206,61 @@ type = "none"
 
 The `wallpaper` mode stretches the image to fill the output. Pick an image
 sized to your monitor for best results.
+
+## Transparent backgrounds
+
+By default driftwm composites the background as fully opaque — a fast path that
+lets it skip blending and skip redrawing anything beneath it. But the background
+sits *above* any `wlr-layer-shell` **Background**-layer surface, so making it
+see-through lets an external wallpaper engine (e.g. a QuickShell or `swaybg`
+setup) show through *while keeping the built-in background on top* — for a full
+external wallpaper with no built-in background, use `type = "none"` below. Two
+ways to opt in, depending on background type:
+
+**Images (`tile` / `wallpaper`)** — automatic. If the PNG carries an alpha
+channel with any transparent pixels, driftwm honors it: transparent areas blend
+to whatever's below. A fully opaque image keeps the fast path. No config needed.
+
+```toml
+# Dots-with-transparent-gaps PNG tiled as a spatial reference over a live
+# wallpaper engine running on the Background layer — gaps show the engine.
+[background]
+type = "tile"
+path = "~/Pictures/dots.png"
+```
+
+**Shaders (`type = "shader"`)** — opt in with `transparent_shader = true`. A
+shader is un-inspectable, so driftwm can't autodetect transparency the way it
+does for images; the flag tells it to honor the shader's output alpha:
+
+```toml
+[background]
+type = "shader"
+path = "~/shaders/dot_grid.glsl"
+transparent_shader = true
+```
+
+Then output a low (or zero) alpha where you want the layer below to show:
+
+```glsl
+// Opaque dots over a transparent field — the gaps reveal what's underneath.
+const vec4 BG_COLOR  = vec4(0.0, 0.0, 0.0, 0.0);  // transparent
+const vec4 DOT_COLOR = vec4(1.0, 1.0, 1.0, 1.0);  // opaque
+```
+
+Notes:
+
+- **Premultiplied alpha** — compositing is premultiplied, so output
+  `vec4(rgb * a, a)`. Mixing two valid premultiplied colors (as `dot_grid` does)
+  stays valid; a raw `vec4(rgb, 0.5)` would fringe too bright.
+- **`cache_shader` is disabled** while `transparent_shader = true` — the
+  shader-bake cache stores opaque canvas tiles and can't carry transparency, so
+  the shader is forced onto the live render path (re-evaluated each frame).
+- **Cost** — a transparent background gives up the opaque fast path: it blends
+  every frame and redraws whatever sits below it. Free when the whole scene is
+  static (no damage = no repaint), but a live engine underneath keeps repainting
+  through it, and it removes the pan-cache optimization — so only turn it on when
+  you actually have something to show through.
 
 ## External wallpaper engines (`type = "none"`)
 

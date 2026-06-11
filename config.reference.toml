@@ -197,6 +197,14 @@
 #   Parallax (u_camera * factor) renders WRONG; animated (u_time) and
 #   zoom-dependent (u_zoom) shaders are never cached and render live.
 #
+# transparent_shader = false
+#   Honor a shader's output alpha so transparent pixels reveal whatever sits
+#   below the background — e.g. a wlr-layer-shell Background surface from an
+#   external wallpaper engine. Forces the shader onto the live path, so
+#   cache_shader has no effect while this is on. Image backgrounds ignore it:
+#   tile/wallpaper PNGs with an alpha channel become see-through automatically.
+#   See docs/shaders.md.
+#
 # cache_budget_mb = 128
 #   Memory ceiling (MB) shared by cache_shader and gigapixel-TIFF wallpapers,
 #   with LRU eviction. Raise it for sharper revisits on large / HiDPI displays;

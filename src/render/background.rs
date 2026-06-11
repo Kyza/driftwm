@@ -19,7 +19,8 @@ use super::shaders::{
 /// `resize` can never silently flip the element back to opaque.
 pub struct BackgroundElement {
     kind: BgKind,
-    /// Composite with alpha so whatever sits below shows through.
+    /// Composite with alpha so whatever sits below shows through. Sourced from
+    /// the image's alpha channel (textures) or `transparent_shader` (shaders).
     transparent: bool,
 }
 
@@ -493,7 +494,7 @@ fn try_init_texture_bg(
         ));
     }
 
-    let (texture, w, h) = load_image_to_texture(renderer, path)?;
+    let (texture, w, h, has_transparency) = load_image_to_texture(renderer, path)?;
 
     let shader_slot = match mode {
         TextureBgMode::Tile => &mut state.render.tile_shader,
@@ -527,7 +528,7 @@ fn try_init_texture_bg(
         // Wallpaper shader has no camera/zoom/time uniforms — image stretches to v_coords [0,1].
         TextureBgMode::Wallpaper => vec![],
     };
-    let transparent = false;
+    let transparent = has_transparency;
     let elem = TileShaderElement::new(
         shader,
         texture,
@@ -591,7 +592,7 @@ fn try_init_textured_shader_bg(
         std::fs::read_to_string(path).map_err(|e| format!("background shader '{path}': {e}"))?;
     let shader = compile_textured_bg_shader(renderer, &src)
         .map_err(|e| format!("background shader '{path}': {e}"))?;
-    let (tex, w, h) = load_image_to_texture(renderer, texture)?;
+    let (tex, w, h, _) = load_image_to_texture(renderer, texture)?;
 
     let area = Rectangle::from_size(initial_size);
     let time_secs = state.start_time.elapsed().as_secs_f32();
@@ -605,7 +606,9 @@ fn try_init_textured_shader_bg(
         ),
         Uniform::new("u_texture_size", (w as f32, h as f32)),
     ];
-    let transparent = false;
+    // A shader's output alpha (not the texture's) decides transparency, and a
+    // shader is un-inspectable — so an explicit flag, not autodetect.
+    let transparent = state.config.background.transparent_shader;
     let elem = TileShaderElement::new(
         shader,
         tex,
@@ -631,10 +634,12 @@ fn try_init_textured_shader_bg(
     Ok(())
 }
 
+/// Returns `(texture, width, height, has_transparency)`. `has_transparency`
+/// drops the opaque fast path so sub-255-alpha pixels blend over the layer below.
 fn load_image_to_texture(
     renderer: &mut GlesRenderer,
     path: &str,
-) -> Result<(GlesTexture, i32, i32), String> {
+) -> Result<(GlesTexture, i32, i32, bool), String> {
     use smithay::backend::renderer::ImportMem;
     use smithay::utils::Buffer;
 
@@ -647,13 +652,14 @@ fn load_image_to_texture(
     };
     let (w, h) = img.dimensions();
     let raw = img.into_raw();
+    let has_transparency = raw.chunks_exact(4).any(|px| px[3] < 255);
     match renderer.import_memory(
         &raw,
         Fourcc::Abgr8888,
         Size::<i32, Buffer>::from((w as i32, h as i32)),
         false,
     ) {
-        Ok(texture) => Ok((texture, w as i32, h as i32)),
+        Ok(texture) => Ok((texture, w as i32, h as i32, has_transparency)),
         Err(e) => {
             tracing::error!("Failed to upload texture from {path}: {e}, using default shader");
             Err(format!(
@@ -713,7 +719,7 @@ fn init_shader_bg(
     };
 
     let area = Rectangle::from_size(initial_size);
-    let transparent = false;
+    let transparent = state.config.background.transparent_shader;
     let time_secs = state.start_time.elapsed().as_secs_f32();
     let elem = PixelShaderElement::new(
         shader,
@@ -759,7 +765,9 @@ fn shader_no_texture_dispatch(
              add a `texture` path under [background]"
         )));
     }
-    if state.config.background.cache_shader {
+    // The chunk-bake cache bakes the shader into opaque canvas textures, which
+    // can't carry transparency — so `transparent_shader` forces the live path.
+    if state.config.background.cache_shader && !state.config.background.transparent_shader {
         shader_chunks_or_live(state, renderer, initial_size, output_name, path)
     } else {
         init_shader_bg(state, renderer, initial_size, output_name)
@@ -790,7 +798,7 @@ fn init_default_shader_bg(
     };
 
     let area = Rectangle::from_size(initial_size);
-    let transparent = false;
+    let transparent = state.config.background.transparent_shader;
     let time_secs = state.start_time.elapsed().as_secs_f32();
     let elem = PixelShaderElement::new(
         shader,

@@ -953,6 +953,12 @@ pub struct BackgroundConfig {
     /// those, instead of recomputing the fragment shader every frame. No-op for
     /// non-shader backgrounds and for shaders using `u_time`/`u_zoom`.
     pub cache_shader: bool,
+    /// Honor a shader background's output alpha so transparent pixels reveal
+    /// whatever sits below (e.g. a wlr-layer-shell Background surface). Drops
+    /// the fullscreen-opaque fast path and forces shaders onto the live render
+    /// path, so `cache_shader` has no effect while this is on. No-op for image
+    /// backgrounds, which detect transparency from the image's own alpha.
+    pub transparent_shader: bool,
     /// Memory ceiling (MB) for the background chunk cache — covers both the
     /// shader-bake cache (`cache_shader`) and gigapixel-TIFF wallpapers. The
     /// cache LRU-evicts to stay under this; lower it on low-memory machines.
