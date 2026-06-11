@@ -20,7 +20,7 @@ when given no arguments and writes when given arguments.
 | `focus <app_id>` | `driftwm msg focus alacritty` | Focus a window by `app_id` substring (case-insensitive); navigates to it only if it's off-screen     |
 | `move`           | `driftwm msg move`            | Print the focused window's position                                                                  |
 | `move <x> <y>`   | `driftwm msg move 100 200`    | Move the focused window                                                                              |
-| `layout`         | `driftwm msg layout`          | Print the active keyboard layout                                                                     |
+| `layout`         | `driftwm msg layout`          | Print the active keyboard layout (full XKB name); `--short` prints the configured code (e.g. `ru`)   |
 | `action <spec>`  | `driftwm msg action zoom-in`  | Run any config action (see [Actions](#actions))                                                      |
 | `screenshot ...` | `driftwm msg screenshot`      | Capture the canvas to a PNG — current view, window, region, or all (see [Screenshots](#screenshots)) |
 | `state`          | `driftwm msg state`           | Dump camera, zoom, and the window inventory                                                          |
@@ -57,7 +57,10 @@ Window actions operate on the **focused** window, so to act on a specific one,
 select it first: `driftwm msg focus alacritty && driftwm msg action close-window`.
 
 Switching the keyboard layout is `action switch-layout next|prev|<index>`; read
-the current layout with `layout`.
+the current layout with `layout` (full XKB name, e.g. `Russian`) or `layout
+--short` for the configured code (e.g. `ru`) — what most status bars want. The
+short form indexes the `input.keyboard.layout` list by the active group, so it
+mirrors exactly what you configured.
 
 `action` replies `Ok` whenever the spec **parses** — even if the action had no
 effect (e.g. `close-window` with nothing focused). Only an unparseable spec
@@ -130,7 +133,7 @@ A reply is `{"Ok": <response>}` on success or `{"Err": "message"}` on failure.
 | get / set zoom   | `{"Zoom":null}` / `{"Zoom":0.5}`                                          |
 | get / set focus  | `{"Focus":null}` / `{"Focus":"alacritty"}`                                |
 | get / set move   | `{"Move":null}` / `{"Move":[100,200]}`                                    |
-| layout           | `"Layout"`                                                                |
+| layout           | `{"Layout":{"short":false}}`                                              |
 | run action       | `{"Action":"switch-layout next"}`                                         |
 | screenshot       | `{"Screenshot":{"target":"Viewport","scale":1.0,"path":"/abs/shot.png"}}` |
 | state            | `"State"`                                                                 |
@@ -140,7 +143,7 @@ A reply is `{"Ok": <response>}` on success or `{"Err": "message"}` on failure.
 ```json
 {"Ok":{"Camera":{"x":500.0,"y":300.0}}}
 {"Ok":{"Zoom":0.5}}
-{"Ok":{"Layout":"English (US)"}}
+{"Ok":{"Layout":"English (US)"}}    // or "us" for {"Layout":{"short":true}}
 {"Ok":{"Focused":"alacritty"}}      // or {"Ok":{"Focused":null}}
 {"Ok":{"Position":{"x":100,"y":200}}}
 {"Ok":"Ok"}                          // camera-set / move-set / action etc.

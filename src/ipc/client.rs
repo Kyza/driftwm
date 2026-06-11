@@ -17,8 +17,12 @@ pub enum Msg {
     Camera { x: Option<f64>, y: Option<f64> },
     /// Get the zoom level, or set it with `<level>` (clamped to the supported range).
     Zoom { level: Option<f64> },
-    /// Print the active keyboard layout.
-    Layout,
+    /// Print the active keyboard layout (full XKB name, e.g. `English (US)`).
+    Layout {
+        /// Print the configured layout code instead (e.g. `us`, `ru`).
+        #[arg(long)]
+        short: bool,
+    },
     /// Dump camera, zoom, and the window inventory.
     State,
     /// Print the focused window, or focus a window by app_id substring.
@@ -138,7 +142,7 @@ fn to_request(msg: &Msg) -> Result<Request, String> {
             _ => return Err("camera needs both <x> and <y>".to_string()),
         },
         Msg::Zoom { level } => Request::Zoom(*level),
-        Msg::Layout => Request::Layout,
+        Msg::Layout { short } => Request::Layout { short: *short },
         Msg::State => Request::State,
         Msg::Focus { app_id } => Request::Focus(app_id.clone()),
         Msg::Move { x, y } => match (x, y) {

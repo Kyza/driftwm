@@ -17,7 +17,11 @@ pub enum Request {
     /// Set value is clamped to the supported range (out to fit-all, in to native
     /// — no magnification).
     Zoom(Option<f64>),
-    Layout,
+    /// `short` reports the configured `input.keyboard.layout` code for the active
+    /// group (e.g. `ru`) instead of the full XKB display name (e.g. `Russian`).
+    Layout {
+        short: bool,
+    },
     State,
     /// Focus a window by `app_id` substring when `Some`.
     Focus(Option<String>),
@@ -136,7 +140,8 @@ mod tests {
             Request::Camera(None),
             Request::Camera(Some((100.0, -200.0))),
             Request::Zoom(Some(2.0)),
-            Request::Layout,
+            Request::Layout { short: false },
+            Request::Layout { short: true },
             Request::State,
             Request::Focus(Some("alacritty".into())),
             Request::Move(None),

@@ -146,7 +146,7 @@ fn dispatch(request: Request, state: &mut DriftWm) -> Reply {
     match request {
         Request::Camera(arg) => cmd_camera(arg, state),
         Request::Zoom(arg) => cmd_zoom(arg, state),
-        Request::Layout => Ok(Response::Layout(state.active_layout.clone())),
+        Request::Layout { short } => cmd_layout(short, state),
         Request::State => Ok(cmd_state(state)),
         Request::Focus(arg) => cmd_focus(arg, state),
         Request::Move(arg) => cmd_move(arg, state),
@@ -202,6 +202,40 @@ fn cmd_zoom(arg: Option<f64>, state: &mut DriftWm) -> Reply {
             Ok(Response::Zoom(clamped))
         }
     }
+}
+
+fn cmd_layout(short: bool, state: &mut DriftWm) -> Reply {
+    if !short {
+        return Ok(Response::Layout(state.active_layout.clone()));
+    }
+    Ok(Response::Layout(active_layout_short(state)))
+}
+
+/// The `input.keyboard.layout` token at the active XKB group index (e.g. `ru`),
+/// for status bars that want the code rather than the full display name.
+///
+/// The stored config always matches the loaded keymap (init pins it on the
+/// invalid-config fallback, reload swaps both together), so the index resolves;
+/// the display-name fallback only guards a malformed token (e.g. a trailing comma).
+fn active_layout_short(state: &mut DriftWm) -> String {
+    let Some(keyboard) = state.seat.get_keyboard() else {
+        return state.active_layout.clone();
+    };
+    let index =
+        keyboard.with_xkb_state(state, |ctx| ctx.xkb().lock().unwrap().active_layout().0) as usize;
+    layout_code(&state.config.keyboard_layout.layout, index)
+        .unwrap_or_else(|| state.active_layout.clone())
+}
+
+/// The `index`-th code in a comma-separated layout list, trimmed; `None` if the
+/// index is out of range or the token is empty (e.g. a trailing comma).
+fn layout_code(layout_list: &str, index: usize) -> Option<String> {
+    layout_list
+        .split(',')
+        .nth(index)
+        .map(str::trim)
+        .filter(|code| !code.is_empty())
+        .map(str::to_owned)
 }
 
 fn cmd_state(state: &mut DriftWm) -> Response {
@@ -481,4 +515,26 @@ fn write_reply(mut stream: &UnixStream, reply: &Reply) -> std::io::Result<()> {
 /// `state`, and the state file all agree.
 fn camera_center(state: &DriftWm) -> (f64, f64) {
     driftwm::canvas::viewport_center(state.camera(), state.zoom(), state.get_viewport_size())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::layout_code;
+
+    #[test]
+    fn layout_code_indexes_the_list() {
+        assert_eq!(layout_code("us,ru", 0).as_deref(), Some("us"));
+        assert_eq!(layout_code("us,ru", 1).as_deref(), Some("ru"));
+    }
+
+    #[test]
+    fn layout_code_trims_whitespace() {
+        assert_eq!(layout_code("us, ru", 1).as_deref(), Some("ru"));
+    }
+
+    #[test]
+    fn layout_code_rejects_out_of_range_and_empty() {
+        assert_eq!(layout_code("us,ru", 2), None);
+        assert_eq!(layout_code("us,", 1), None);
+    }
 }

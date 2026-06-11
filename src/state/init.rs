@@ -173,7 +173,7 @@ impl DriftWm {
         let background_effect_state =
             smithay::wayland::background_effect::BackgroundEffectState::new::<Self>(&dh);
 
-        let (config, config_errors) = {
+        let (mut config, config_errors) = {
             let (c, errs) = driftwm::config::Config::load_collect();
             (c, errs)
         };
@@ -210,6 +210,15 @@ impl DriftWm {
                     ErrorSource::Keyboard,
                     "keyboard: invalid layout config — using default (us)".into(),
                 );
+                // Pin the stored config to the keymap we actually loaded, so
+                // index-by-group readers (`layout --short`) can't report a
+                // rejected code the keymap never compiled.
+                config.keyboard_layout = driftwm::config::KeyboardLayout {
+                    layout: "us".into(),
+                    variant: String::new(),
+                    options: String::new(),
+                    model: String::new(),
+                };
                 // Explicit "us" rather than XkbConfig::default(): an empty layout
                 // defers to XKB_DEFAULT_LAYOUT, which could be the same garbage we
                 // just rejected.
