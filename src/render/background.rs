@@ -45,11 +45,7 @@ fn bg_opaque_regions(
     transparent: bool,
     area: Rectangle<i32, Logical>,
 ) -> Option<Vec<Rectangle<i32, Logical>>> {
-    if transparent {
-        None
-    } else {
-        Some(vec![area])
-    }
+    if transparent { None } else { Some(vec![area]) }
 }
 
 /// Per-frame viewport inputs for [`BackgroundElement::update`].
@@ -544,10 +540,10 @@ fn try_init_texture_bg(
         TextureBgMode::Tile => BgKind::Tile(elem),
         TextureBgMode::Wallpaper => BgKind::Wallpaper(elem),
     };
-    state
-        .render
-        .cached_bg
-        .insert(output_name.to_string(), BackgroundElement { kind, transparent });
+    state.render.cached_bg.insert(
+        output_name.to_string(),
+        BackgroundElement { kind, transparent },
+    );
     // Clear stale flags from a prior shader-mode bg — otherwise they'd
     // force every-frame redraws or push uniforms into a texture program
     // that doesn't declare them.
