@@ -65,10 +65,15 @@ mirrors exactly what you configured.
 `action` replies `Ok` whenever the spec **parses** — even if the action had no
 effect (e.g. `close-window` with nothing focused). Only an unparseable spec
 returns `Err`. The dedicated query/set commands above, by contrast, can report a
-failed lookup or bad value. Note that `action` reaches `exec`/`spawn`/`quit`/
-`reload-config` too: this grants no privilege the session lacks (the socket is
-`0600`, see below), but don't relax those permissions or proxy the socket over a
-network expecting it to be a read-only control surface.
+failed lookup or bad value.
+
+> [!WARNING]
+> The IPC socket is a full control surface, not a read-only one: `action` can
+> run `exec`/`spawn` (launch programs), `quit`, and `reload-config`. It's safe
+> only because the socket is `0600` (your user only) — anything that can open it
+> could already run programs as you. So don't loosen the permissions or bridge it
+> over a network for "just reading state": that hands arbitrary code execution to
+> whoever reaches it.
 
 ### Coordinates
 
@@ -107,9 +112,10 @@ adds a `[zoom] fit_padding` margin).
 - `-o PATH` — destination, or `-` for stdout (default
   `./driftwm-screenshot-<time>.png`); the written path is printed.
 
-**Caveats:** no blur (a translucent window shows a sharp backdrop, not a blurred
-one); a gigapixel TIFF wallpaper uses a coarse pyramid level (softens at extreme
-`--scale`); captures tile internally but cap at 16384 px/side.
+> [!NOTE]
+> Caveats: no blur (a translucent window shows a sharp backdrop, not a blurred
+> one); a gigapixel TIFF wallpaper uses a coarse pyramid level (softens at extreme
+> `--scale`); captures tile internally but cap at 16384 px/side.
 
 ## Wire protocol
 

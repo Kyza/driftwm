@@ -34,8 +34,8 @@ type = "tile"
 path = "~/Pictures/output.tif"
 ```
 
-`--compression=deflate` is lossless. Don't use `--compression=jpeg` — it's lossy
-and produces visible block artifacts at tile edges as you zoom in.
+`--compression=deflate` is lossless — preferable for a wallpaper you'll zoom
+right into. `--compression=jpeg` is smaller but lossy.
 
 ### Alternative: GDAL
 
