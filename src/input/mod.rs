@@ -104,9 +104,30 @@ impl DriftWm {
         }
     }
 
+    /// True when the event is relative motion under a locked pointer (typically a
+    /// fullscreen game). The pointer position is frozen (and the cursor usually
+    /// hidden) and the client redraws via its own surface commits, so a blanket
+    /// mark would only compete with its frames at mouse-poll rate.
+    fn is_relative_motion_to_locked_pointer<I: InputBackend>(&self, event: &InputEvent<I>) -> bool {
+        if !matches!(event, InputEvent::PointerMotion { .. }) {
+            return false;
+        }
+        let Some(pointer) = self.seat.get_pointer() else {
+            return false;
+        };
+        let Some(focus) = pointer.current_focus() else {
+            return false;
+        };
+        with_pointer_constraint(&focus.0, &pointer, |c| {
+            c.is_some_and(|c| c.is_active() && matches!(&*c, PointerConstraint::Locked(_)))
+        })
+    }
+
     /// Process a single input event from any backend (winit, libinput, etc).
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
-        self.mark_all_dirty();
+        if !self.is_relative_motion_to_locked_pointer(&event) {
+            self.mark_all_dirty();
+        }
 
         // Notify idle tracker of user activity (skip device add/remove metadata events).
         // Also wake any DPMS-off outputs — without this, recovering from
