@@ -1290,6 +1290,33 @@ fn teardown_output(data: &mut DriftWm, surface: SurfaceData, is_last: bool) {
     data.screencopy_state.remove_output(&output);
     data.gamma_control_manager_state.output_removed(&output);
 
+    // Fail + drop pending captures that can no longer render — a stranded entry
+    // hangs the client and leaks its buffer fd. Toplevel captures drain on any
+    // output's render path, but when this was the *last* output no CRTC remains
+    // to run them (the virtual placeholder is never rendered), so they're dead.
+    // Screencopy's Drop sends failed() itself; ext-image-copy frames must be
+    // failed explicitly.
+    data.pending_screencopies.retain(|s| s.output() != &output);
+    {
+        use driftwm::protocols::image_copy_capture::PendingCaptureKind;
+        use smithay::reexports::wayland_protocols::ext::image_copy_capture::v1::server::ext_image_copy_capture_frame_v1::FailureReason;
+        let mut i = 0;
+        while i < data.pending_captures.len() {
+            let dead = match &data.pending_captures[i].kind {
+                PendingCaptureKind::Output(o) => o == &output,
+                PendingCaptureKind::Toplevel(_) => is_last,
+            };
+            if dead {
+                data.pending_captures
+                    .swap_remove(i)
+                    .frame
+                    .failed(FailureReason::Unknown);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
     // Disable the wl_output global before any further state mutation so clients
     // (wf-recorder, swayosd, etc.) see the removal first.
     remove_output_global(data, global);

@@ -681,6 +681,10 @@ use driftwm::protocols::screencopy::{Screencopy, ScreencopyHandler, ScreencopyMa
 
 impl ScreencopyHandler for DriftWm {
     fn frame(&mut self, screencopy: Screencopy) {
+        // Kick a redraw of the captured output: render_if_needed bails when
+        // redraws_needed is empty, so an idle-system capture (e.g. grim) would
+        // otherwise stall until unrelated damage woke a render.
+        self.redraws_needed.insert(screencopy.output().clone());
         self.pending_screencopies.push(screencopy);
     }
 
@@ -800,6 +804,20 @@ impl ImageCopyCaptureHandler for DriftWm {
     }
 
     fn capture_frame(&mut self, capture: PendingCapture) {
+        use driftwm::protocols::image_copy_capture::PendingCaptureKind;
+        // Kick a redraw so an idle-system capture is fulfilled promptly instead
+        // of stalling until unrelated damage. Toplevel captures drain on any
+        // output's render path, so the active output suffices.
+        match &capture.kind {
+            PendingCaptureKind::Output(output) => {
+                self.redraws_needed.insert(output.clone());
+            }
+            PendingCaptureKind::Toplevel(_) => {
+                if let Some(output) = self.active_output() {
+                    self.redraws_needed.insert(output);
+                }
+            }
+        }
         self.pending_captures.push(capture);
     }
 
