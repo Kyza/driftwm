@@ -681,10 +681,16 @@ use driftwm::protocols::screencopy::{Screencopy, ScreencopyHandler, ScreencopyMa
 
 impl ScreencopyHandler for DriftWm {
     fn frame(&mut self, screencopy: Screencopy) {
-        // Kick a redraw of the captured output: render_if_needed bails when
-        // redraws_needed is empty, so an idle-system capture (e.g. grim) would
-        // otherwise stall until unrelated damage woke a render.
-        self.redraws_needed.insert(screencopy.output().clone());
+        // A plain `copy` (e.g. grim) wants the current frame now, so kick a
+        // redraw: render_if_needed bails when redraws_needed is empty, and an
+        // idle-system capture would otherwise stall until unrelated damage.
+        //
+        // For copy_with_damage, forcing a render per pull would re-composite a
+        // static scene every frame, keeping the GPU busy and defeating direct
+        // scanout of a fullscreen client behind it; let real damage drive it.
+        if !screencopy.with_damage() {
+            self.redraws_needed.insert(screencopy.output().clone());
+        }
         self.pending_screencopies.push(screencopy);
     }
 
